@@ -19,17 +19,19 @@ Une web app qui m'aide à noter vite des feedbacks (bugs, idées, détails desig
 5. **Plusieurs projets** : les feedbacks sont classés par projet (ex. DopaBreak, autre app).
 6. **Outils d'annotation** : tous — dessin libre, flèches, rectangles/cercles, texte, flou.
 
-7. **Contenu d'un feedback** : images annotées, texte libre, note vocale, priorité. Tout est optionnel et combinable (un feedback peut n'avoir qu'un vocal, ou qu'une image, etc.).
+7. **Contenu d'un feedback** : images annotées, texte libre, priorité. Tout est optionnel et combinable.
    - Propositions de Claude (à confirmer) : plusieurs images possibles par feedback ; priorité sur 3 niveaux (haute / moyenne / basse).
-   - Point soulevé : Claude Code ne peut pas écouter un fichier audio → pour que le vocal serve à la correction, il faudrait le transcrire en texte.
+   - Note vocale : **pas en v1**, on verra plus tard (rappel : Claude Code ne peut pas écouter l'audio, il faudra une transcription en texte).
 
 ## Questions restantes
 
-- (prochaine) Le vocal : il sert à toi (te souvenir) ou à Claude (doit être transcrit en texte dans l'export) ?
-- Format exact de l'export "copier pour Claude"
+- (prochaine) Export vers Claude : un feedback à la fois, ou tous les "à faire" d'un projet d'un coup ?
+- Format exact de l'export "copier pour Claude" (piste : partage Android direct vers l'app Claude, texte + images)
 - Ensuite : proposer 2-3 approches techniques, présenter le design, écrire le spec dans `docs/superpowers/specs/`.
 
 ## Hors périmètre v1
+
+- Note vocale (plus tard, avec transcription en texte)
 
 - Bouton flottant / capture native (nécessiterait une app Android native)
 - Création d'issues GitHub, sync des feedbacks sur GitHub
