@@ -19,9 +19,13 @@ Une web app qui m'aide à noter vite des feedbacks (bugs, idées, détails desig
 5. **Plusieurs projets** : les feedbacks sont classés par projet (ex. DopaBreak, autre app).
 6. **Outils d'annotation** : tous — dessin libre, flèches, rectangles/cercles, texte, flou.
 
+7. **Contenu d'un feedback** : images annotées, texte libre, note vocale, priorité. Tout est optionnel et combinable (un feedback peut n'avoir qu'un vocal, ou qu'une image, etc.).
+   - Propositions de Claude (à confirmer) : plusieurs images possibles par feedback ; priorité sur 3 niveaux (haute / moyenne / basse).
+   - Point soulevé : Claude Code ne peut pas écouter un fichier audio → pour que le vocal serve à la correction, il faudrait le transcrire en texte.
+
 ## Questions restantes
 
-- (prochaine) Qu'est-ce qu'un feedback contient en plus de l'image : type (bug/idée/design), priorité, texte libre, vocal ?
+- (prochaine) Le vocal : il sert à toi (te souvenir) ou à Claude (doit être transcrit en texte dans l'export) ?
 - Format exact de l'export "copier pour Claude"
 - Ensuite : proposer 2-3 approches techniques, présenter le design, écrire le spec dans `docs/superpowers/specs/`.
 
