@@ -25,11 +25,14 @@ Une web app qui m'aide à noter vite des feedbacks (bugs, idées, détails desig
    - Un feedback à la fois (bouton sur chaque feedback).
    - Tout d'un coup (bouton sur le projet) : le message demande à Claude de traiter dans l'ordre des priorités quand il y en a.
    - Piste technique : partage Android direct vers l'app Claude (texte + images), plus fiable que le presse-papier.
-9. **Navigation en canvas** (idée de Paul, à préciser) : un canvas visuel avec le nom du projet en racine, une branche "Feedback v1", et dedans une liste v1.01, v1.02… Un clic sur un élément ouvre l'endroit avec les captures, les notes, etc.
+9. **Navigation en canvas** : un canvas visuel avec le nom du projet en racine, une branche par version de l'app ("Feedback v1", "Feedback v2"…).
+   - Choix de Paul (variante B de la maquette) : **v1.01, v1.02… = des sessions de test**, chacune regroupe plusieurs feedbacks. Clic sur une session → liste de ses feedbacks → clic → détail (captures, note, priorité).
+   - Maquette : https://claude.ai/artifact/1tMTTTyBtJ9ft6JPX6CmM8 (source dans le scratchpad de la session, non versionnée)
+   - Propositions de Claude (à confirmer) : numéro de session automatique (v1.01, v1.02…) + date comme titre ; branche v2 créée à la main ; envoi possible pour une session entière.
 
 ## Questions restantes
 
-- (prochaine) Canvas : que représente v1.01 (un feedback, ou une session de test qui regroupe plusieurs feedbacks) ? Montrer une maquette.
+- (prochaine) Valider le récap de la navigation (sessions de test).
 - Format exact du message envoyé à Claude
 - Ensuite : proposer 2-3 approches techniques, présenter le design, écrire le spec dans `docs/superpowers/specs/`.
 
