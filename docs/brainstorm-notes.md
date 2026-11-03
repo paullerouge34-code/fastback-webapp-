@@ -18,7 +18,6 @@ Une web app qui m'aide à noter vite des feedbacks (bugs, idées, détails desig
    - Les feedbacks restent sur le téléphone (pas de sync GitHub pour l'instant).
 5. **Plusieurs projets** : les feedbacks sont classés par projet (ex. DopaBreak, autre app).
 6. **Outils d'annotation** : tous — dessin libre, flèches, rectangles/cercles, texte, flou.
-
 7. **Contenu d'un feedback** : images annotées, texte libre, priorité. Tout est optionnel et combinable.
    - Propositions de Claude (à confirmer) : plusieurs images possibles par feedback ; priorité sur 3 niveaux (haute / moyenne / basse).
    - Note vocale : **pas en v1**, on verra plus tard (rappel : Claude Code ne peut pas écouter l'audio, il faudra une transcription en texte).
@@ -32,6 +31,5 @@ Une web app qui m'aide à noter vite des feedbacks (bugs, idées, détails desig
 ## Hors périmètre v1
 
 - Note vocale (plus tard, avec transcription en texte)
-
 - Bouton flottant / capture native (nécessiterait une app Android native)
 - Création d'issues GitHub, sync des feedbacks sur GitHub
