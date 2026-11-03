@@ -21,11 +21,16 @@ Une web app qui m'aide à noter vite des feedbacks (bugs, idées, détails desig
 7. **Contenu d'un feedback** : images annotées, texte libre, priorité. Tout est optionnel et combinable.
    - Propositions de Claude (à confirmer) : plusieurs images possibles par feedback ; priorité sur 3 niveaux (haute / moyenne / basse).
    - Note vocale : **pas en v1**, on verra plus tard (rappel : Claude Code ne peut pas écouter l'audio, il faudra une transcription en texte).
+8. **Envoi vers Claude** : les deux modes.
+   - Un feedback à la fois (bouton sur chaque feedback).
+   - Tout d'un coup (bouton sur le projet) : le message demande à Claude de traiter dans l'ordre des priorités quand il y en a.
+   - Piste technique : partage Android direct vers l'app Claude (texte + images), plus fiable que le presse-papier.
+9. **Navigation en canvas** (idée de Paul, à préciser) : un canvas visuel avec le nom du projet en racine, une branche "Feedback v1", et dedans une liste v1.01, v1.02… Un clic sur un élément ouvre l'endroit avec les captures, les notes, etc.
 
 ## Questions restantes
 
-- (prochaine) Export vers Claude : un feedback à la fois, ou tous les "à faire" d'un projet d'un coup ?
-- Format exact de l'export "copier pour Claude" (piste : partage Android direct vers l'app Claude, texte + images)
+- (prochaine) Canvas : que représente v1.01 (un feedback, ou une session de test qui regroupe plusieurs feedbacks) ? Montrer une maquette.
+- Format exact du message envoyé à Claude
 - Ensuite : proposer 2-3 approches techniques, présenter le design, écrire le spec dans `docs/superpowers/specs/`.
 
 ## Hors périmètre v1
