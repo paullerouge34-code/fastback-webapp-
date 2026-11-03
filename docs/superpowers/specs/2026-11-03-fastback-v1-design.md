@@ -1,0 +1,80 @@
+# Fastback v1 — design
+
+Date : 2026-11-03 · Statut : validé par Paul (« oui pour tout, commence le dev »)
+
+## Pourquoi
+
+Paul développe des apps mobiles (ex. DopaBreak) depuis son téléphone avec des sessions Claude Code.
+Quand il teste ses apps, il veut noter vite les bugs, idées et détails de design, puis les envoyer à Claude pour correction.
+Fastback est l'outil de prise de notes de test, pensé pour le téléphone.
+
+## Objectifs v1
+
+1. Classer les feedbacks par **projet → branche de version (v1, v2…) → session de test (v1.01, v1.02…) → feedback**.
+2. Un feedback = captures d'écran annotées + note libre + priorité (haute / moyenne / basse), tout optionnel.
+3. Annoter les captures : dessin libre, flèche, rectangle, cercle, texte, flou (pixellisation).
+4. Statut par feedback : à faire / corrigé.
+5. Envoyer à Claude : un feedback, une session, ou tous les « à faire » d'un projet. Le message trie par priorité et demande à Claude de commencer par les hautes.
+
+## Hors périmètre v1
+
+- Note vocale (plus tard, avec transcription en texte)
+- Capture d'écran native / bouton flottant (demanderait une app Android native)
+- Sync GitHub, création d'issues, comptes, sauvegarde cloud
+
+## Contraintes
+
+- Web app / PWA hébergée sur GitHub Pages (repo public), ajoutée à l'écran d'accueil Android.
+- Développée depuis le téléphone via des sessions Claude Code : pas d'étape de build, code lisible tel quel.
+- Les données restent sur le téléphone (IndexedDB). Si Paul efface les données du navigateur, tout est perdu.
+
+## Approches envisagées
+
+| Approche | Pour | Contre |
+|---|---|---|
+| **HTML + JS natif (modules ES), sans build** ✅ | Rien à installer, GitHub Pages sert les fichiers tels quels, chaque session Claude peut modifier un fichier et pousser | Moins de confort qu'un framework pour une très grosse app |
+| React/Vite + build GitHub Actions | Écosystème riche | Étape de build à maintenir, plus lourd à faire évoluer depuis le téléphone |
+| App native Android | Capture d'écran native possible | Hors de portée d'un dev 100 % téléphone, publication compliquée |
+
+Choix (décision de Claude, Paul a dit oui pour tout) : **HTML + JS natif sans build**.
+
+## Comment c'est construit
+
+- `index.html` + `css/app.css` + `js/*.js` (modules ES), routage par `#hash`.
+- `js/db.js` : IndexedDB, magasins `projects`, `branches`, `sessions`, `feedbacks`, `images`.
+- `js/annotate.js` : éditeur plein écran sur `<canvas>`. On garde l'image d'origine + la liste des formes, pour pouvoir ré-annoter ; une image rendue (JPEG) sert à l'affichage et à l'envoi.
+- `js/share.js` : construit le texte pour Claude ; envoi via le menu de partage Android (Web Share API avec fichiers). Si le partage n'est pas disponible : copie du texte dans le presse-papier.
+- `sw.js` + `manifest.webmanifest` : installable et utilisable hors ligne (réseau d'abord, cache en secours).
+
+### Modèle de données
+
+- Project `{id, name, createdAt}`
+- Branch `{id, projectId, version, createdAt}` — affichée « Feedback v{version} »
+- Session `{id, branchId, number, createdAt}` — affichée « v{version}.{number sur 2 chiffres} », titre = date
+- Feedback `{id, sessionId, note, priority: 'high'|'mid'|'low'|null, status: 'todo'|'done', imageIds[], createdAt}`
+- Image `{id, feedbackId, original: Blob, shapes: [], rendered: Blob}`
+
+### Écrans
+
+1. **Mes projets** : liste + créer un projet (crée aussi la branche v1).
+2. **Canvas du projet** : racine = nom du projet, une colonne par branche, sessions dessous. Boutons « + Nouvelle session », « + Branche vN », « Tout envoyer à Claude ».
+3. **Session** : liste des feedbacks (vignette, priorité, statut), « + Ajouter un feedback », « Envoyer cette session ».
+4. **Feedback** : captures (ajouter / annoter / supprimer), note, priorité, statut, « Envoyer à Claude ».
+5. **Annotation** : outils, couleur, épaisseur, annuler, enregistrer.
+
+### Format du message pour Claude
+
+```
+Projet : DopaBreak (v1, session v1.02)
+Corrige ces 3 feedbacks. Traite-les dans l'ordre des priorités : haute, puis moyenne, puis basse.
+
+1. [priorité haute] Le bouton Démarrer est caché par la barre du bas
+   Captures : image 1, image 2
+...
+```
+
+Les images sont jointes dans le même ordre (nommées `fb1-img1.jpg`…).
+
+## Laissé au développeur
+
+Style visuel (reprend la maquette), détails d'interaction, messages d'erreur.

@@ -1,7 +1,7 @@
 # Fastback — notes de brainstorming
 
 > Fichier de passage de relais : toute nouvelle session Claude (locale ou cloud) doit lire ce fichier d'abord.
-> Brainstorming en cours (skill `brainstorming`), réponses en français, style "ADHD mode" (action d'abord, étapes numérotées, état rappelé à chaque message).
+> Brainstorming terminé, v1 codée (voir `docs/superpowers/specs/2026-11-03-fastback-v1-design.md`). Réponses en français, style "ADHD mode" (action d'abord, étapes numérotées, état rappelé à chaque message).
 
 ## But
 
@@ -30,11 +30,11 @@ Une web app qui m'aide à noter vite des feedbacks (bugs, idées, détails desig
    - Maquette : https://claude.ai/artifact/1tMTTTyBtJ9ft6JPX6CmM8 (source dans le scratchpad de la session, non versionnée)
    - Propositions de Claude (à confirmer) : numéro de session automatique (v1.01, v1.02…) + date comme titre ; branche v2 créée à la main ; envoi possible pour une session entière.
 
-## Questions restantes
+## État (2026-11-03)
 
-- (prochaine) Valider le récap de la navigation (sessions de test).
-- Format exact du message envoyé à Claude
-- Ensuite : proposer 2-3 approches techniques, présenter le design, écrire le spec dans `docs/superpowers/specs/`.
+- Paul a validé toutes les propositions et demandé de lancer le dev.
+- v1 codée : HTML + JS natif sans build, IndexedDB, annotation sur canvas, envoi via le menu de partage Android (texte + images) ou copie du texte.
+- Reste à faire par Paul : fusionner dans `main` et activer GitHub Pages (voir README), puis tester sur le téléphone.
 
 ## Hors périmètre v1
 
