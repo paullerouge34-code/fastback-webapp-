@@ -1,7 +1,7 @@
 # Fastback — notes de brainstorming
 
 > Fichier de passage de relais : toute nouvelle session Claude (locale ou cloud) doit lire ce fichier d'abord.
-> Brainstorming en cours (skill `brainstorming`), réponses en français, style "ADHD mode" (action d'abord, étapes numérotées, état rappelé à chaque message).
+> Brainstorming terminé, v1 codée (voir `docs/superpowers/specs/2026-11-03-fastback-v1-design.md`). Réponses en français, style "ADHD mode" (action d'abord, étapes numérotées, état rappelé à chaque message).
 
 ## But
 
@@ -18,14 +18,26 @@ Une web app qui m'aide à noter vite des feedbacks (bugs, idées, détails desig
    - Les feedbacks restent sur le téléphone (pas de sync GitHub pour l'instant).
 5. **Plusieurs projets** : les feedbacks sont classés par projet (ex. DopaBreak, autre app).
 6. **Outils d'annotation** : tous — dessin libre, flèches, rectangles/cercles, texte, flou.
+7. **Contenu d'un feedback** : images annotées, texte libre, priorité. Tout est optionnel et combinable.
+   - Propositions de Claude (à confirmer) : plusieurs images possibles par feedback ; priorité sur 3 niveaux (haute / moyenne / basse).
+   - Note vocale : **pas en v1**, on verra plus tard (rappel : Claude Code ne peut pas écouter l'audio, il faudra une transcription en texte).
+8. **Envoi vers Claude** : les deux modes.
+   - Un feedback à la fois (bouton sur chaque feedback).
+   - Tout d'un coup (bouton sur le projet) : le message demande à Claude de traiter dans l'ordre des priorités quand il y en a.
+   - Piste technique : partage Android direct vers l'app Claude (texte + images), plus fiable que le presse-papier.
+9. **Navigation en canvas** : un canvas visuel avec le nom du projet en racine, une branche par version de l'app ("Feedback v1", "Feedback v2"…).
+   - Choix de Paul (variante B de la maquette) : **v1.01, v1.02… = des sessions de test**, chacune regroupe plusieurs feedbacks. Clic sur une session → liste de ses feedbacks → clic → détail (captures, note, priorité).
+   - Maquette : https://claude.ai/artifact/1tMTTTyBtJ9ft6JPX6CmM8 (source dans le scratchpad de la session, non versionnée)
+   - Propositions de Claude (à confirmer) : numéro de session automatique (v1.01, v1.02…) + date comme titre ; branche v2 créée à la main ; envoi possible pour une session entière.
 
-## Questions restantes
+## État (2026-11-03)
 
-- (prochaine) Qu'est-ce qu'un feedback contient en plus de l'image : type (bug/idée/design), priorité, texte libre, vocal ?
-- Format exact de l'export "copier pour Claude"
-- Ensuite : proposer 2-3 approches techniques, présenter le design, écrire le spec dans `docs/superpowers/specs/`.
+- Paul a validé toutes les propositions et demandé de lancer le dev.
+- v1 codée : HTML + JS natif sans build, IndexedDB, annotation sur canvas, envoi via le menu de partage Android (texte + images) ou copie du texte.
+- Reste à faire par Paul : fusionner dans `main` et activer GitHub Pages (voir README), puis tester sur le téléphone.
 
 ## Hors périmètre v1
 
+- Note vocale (plus tard, avec transcription en texte)
 - Bouton flottant / capture native (nécessiterait une app Android native)
 - Création d'issues GitHub, sync des feedbacks sur GitHub
