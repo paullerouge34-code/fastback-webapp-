@@ -463,10 +463,12 @@ async function sessionScreen(id) {
   const cards = await Promise.all(shown.map(async (f) => {
     const img = f.imageIds[0] ? await db.get('images', f.imageIds[0]) : null;
     const thumb = img ? `<img src="${blobUrl(img.rendered || img.original)}" alt="">` : '<span>Texte</span>';
-    return `<a class="fb-card ${f.status === 'done' ? 'done' : ''}" href="#/f/${f.id}" data-id="${f.id}">
+    return `<a class="fb-card ${f.status === 'done' ? 'done' : ''}" href="#/f/${f.id}" data-id="${f.id}"${f.priority ? ` data-p="${f.priority}"` : ''}>
+      ${f.priority ? '<span class="fb-stripe" aria-hidden="true"></span>' : ''}
       <span class="thumb">${thumb}${f.imageIds.length > 1 ? `<b>${f.imageIds.length}</b>` : ''}</span>
       <span class="fb-c"><span class="fb-t">${esc(firstLine(f.note)) || '<i class="muted">Sans note</i>'}</span>
       <span class="row">${f.type ? `<span class="chip type">${TYPES[f.type]}</span>` : ''}${f.priority ? `<span class="chip ${f.priority}">${PRIO[f.priority]}</span>` : ''}<span class="chip status">${f.status === 'done' ? 'Corrigé' : 'À faire'}</span></span></span>
+      <button class="fb-check" data-act="toggle-done" data-id="${f.id}" aria-label="${f.status === 'done' ? 'Remettre à faire' : 'Marquer corrigé'}" aria-pressed="${f.status === 'done'}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5 10 17 19 7"/></svg></button>
     </a>`;
   }));
   const todo = fbs.filter((f) => f.status === 'todo');
@@ -521,7 +523,17 @@ async function sessionScreen(id) {
   app.onclick = async (e) => {
     const t = e.target.closest('[data-act]');
     if (!t) return;
-    if (t.dataset.act === 'filter') { setView({ ...view, filter: t.dataset.f }); route(); }
+    if (t.dataset.act === 'toggle-done') {
+      e.preventDefault();
+      const fb = await db.get('feedbacks', t.dataset.id);
+      const done = fb.status !== 'done';
+      await db.put('feedbacks', { ...fb, status: done ? 'done' : 'todo' });
+      const card = t.closest('.fb-card');
+      card.classList.toggle('done', done);
+      card.classList.add('just-done');
+      toast(done ? 'Feedback corrigé ✓' : 'Remis à faire');
+      setTimeout(route, 650);
+    } else if (t.dataset.act === 'filter') { setView({ ...view, filter: t.dataset.f }); route(); }
     else if (t.dataset.act === 'sort') { setView({ ...view, sort: view.sort === 'prio' ? 'manual' : 'prio' }); route(); }
     else if (t.dataset.act === 'new-fb') {
       const f = await db.createFeedback(id);
@@ -709,6 +721,19 @@ function notFound() {
 
 // ---------- Routeur ----------
 let currentFeedback = null;
+let lastPath = null;
+
+// Animation d'arrivée, seulement quand on change d'écran (pas quand l'écran se met à jour).
+function animateScreen(path) {
+  if (path === lastPath) return;
+  lastPath = path;
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  app.querySelector('.bar')?.classList.add('enter-bar');
+  app.querySelector('.fab')?.classList.add('enter-fab');
+  const items = app.querySelectorAll('.project-card, .fb-card, .detail > .field, .detail > .actions-row, .toolbar, .backup, .empty, .page > .btn, .root, .branch-head, .leaf, .branch > .add');
+  items.forEach((el, i) => { el.style.setProperty('--i', Math.min(i, 10)); el.classList.add('enter'); });
+  setTimeout(() => items.forEach((el) => el.classList.remove('enter')), 2200);
+}
 
 // Un feedback laissé sans note ni capture est supprimé en sortant.
 async function cleanupEmpty(nextFeedback) {
@@ -732,6 +757,7 @@ async function route() {
     else if (kind === 's') await sessionScreen(id);
     else if (kind === 'f') await feedbackScreen(id, query === 'new');
     else await projectsScreen();
+    animateScreen(path);
   } catch (err) {
     console.error(err);
     app.innerHTML = `${bar('Erreur', { back: '#/' })}<main class="page"><div class="empty"><p class="empty-title">Quelque chose a planté</p><p class="muted">${esc(err.message)}</p></div></main>`;
