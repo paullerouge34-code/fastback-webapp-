@@ -1,6 +1,7 @@
 import * as db from './db.js';
 import { openAnnotator } from './annotate.js';
 import { buildMessage, send, sortByPriority } from './share.js';
+import { pushOverlay, dismissAll } from './overlay.js';
 
 const app = document.getElementById('app');
 const PRIO = { high: 'Haute', mid: 'Moyenne', low: 'Basse' };
@@ -43,7 +44,9 @@ export function toast(msg) {
   setTimeout(() => el.remove(), 2600);
 }
 
-// Feuille modale. actions : [{ label, value, kind: 'primary'|'danger'|'ghost' }]
+// Feuille modale. actions : [{ label, value, kind: 'primary'|'danger'|'ghost', run }]
+// run(form) s'exécute tout de suite dans le geste (nécessaire pour partager / copier).
+// Le bouton retour du téléphone ferme la feuille.
 function sheet({ title, body = '', actions = [{ label: 'Fermer', value: null, kind: 'ghost' }], onOpen }) {
   return new Promise((resolve) => {
     const el = document.createElement('div');
@@ -53,15 +56,18 @@ function sheet({ title, body = '', actions = [{ label: 'Fermer', value: null, ki
       <div class="sheet-actions">${actions.map((a, i) => `<button type="${a.kind === 'primary' ? 'submit' : 'button'}" class="btn ${a.kind || 'ghost'}" data-i="${i}">${esc(a.label)}</button>`).join('')}</div>
     </form>`;
     const form = el.querySelector('form');
-    const done = (v) => { el.remove(); resolve(v); };
+    let closed = false;
+    const finish = (v) => { if (closed) return; closed = true; el.remove(); resolve(v); };
+    const release = pushOverlay(() => finish(null));
+    const done = async (v) => { if (closed) return; el.remove(); await release(); finish(v); };
     const primary = actions.findIndex((a) => a.kind === 'primary');
+    const pick = (a) => { a.run?.(form); return typeof a.value === 'function' ? a.value(form) : a.value; };
     form.addEventListener('submit', (e) => { e.preventDefault(); done(pick(actions[primary])); });
     el.addEventListener('click', (e) => {
       if (e.target === el) return done(null);
       const b = e.target.closest('button[data-i]');
       if (b && b.type === 'button') done(pick(actions[Number(b.dataset.i)]));
     });
-    const pick = (a) => (typeof a.value === 'function' ? a.value(form) : a.value);
     document.body.appendChild(el);
     onOpen?.(form, done);
     form.querySelector('input, textarea')?.focus();
@@ -83,21 +89,20 @@ const confirmDelete = (what) => sheet({
 async function sendSheet(payload) {
   const msg = await buildMessage(payload);
   const n = msg.files.length;
-  const res = await sheet({
+  const copy = () => navigator.clipboard.writeText(msg.text)
+    .then(() => toast('Texte copié'), () => toast('Copie impossible sur cet appareil'));
+  const share = () => send(msg).then((r) => {
+    if (r === 'copied') toast('Partage indisponible : texte copié à la place');
+    else if (r === 'failed') toast('Partage impossible sur cet appareil');
+  });
+  await sheet({
     title: 'Envoyer à Claude',
     body: `<p class="muted">${n ? `${plural(n, 'image')} + ce texte. ` : ''}Choisis l'app Claude dans le menu de partage.</p><pre class="preview">${esc(msg.text)}</pre>`,
     actions: [
-      { label: 'Copier le texte', value: 'copy' },
-      { label: n ? `Partager (texte + ${plural(n, 'image')})` : 'Partager', kind: 'primary', value: 'share' },
+      { label: 'Copier le texte', value: null, run: copy },
+      { label: n ? `Partager (texte + ${plural(n, 'image')})` : 'Partager', kind: 'primary', value: null, run: share },
     ],
   });
-  if (res === 'copy') {
-    try { await navigator.clipboard.writeText(msg.text); toast('Texte copié'); } catch { toast('Copie impossible sur cet appareil'); }
-  } else if (res === 'share') {
-    const r = await send(msg);
-    if (r === 'copied') toast('Partage indisponible : texte copié à la place');
-    else if (r === 'failed') toast('Partage impossible sur cet appareil');
-  }
 }
 
 // ---------- Écran : mes projets ----------
@@ -293,8 +298,9 @@ async function feedbackScreen(id, isNew) {
         </div>
       </section>
       <section class="field">
-        <label class="label" for="note">Note</label>
-        <textarea id="note" class="input note" rows="4" placeholder="Ce qui ne va pas, ou ton idée. La première ligne sert de titre.">${esc(f.note)}</textarea>
+        <span class="label" id="points-label">Notes</span>
+        <ul class="points" id="points" aria-labelledby="points-label"></ul>
+        <button class="add-point" data-act="add-point">${ICON.plus} Ajouter un point</button>
       </section>
       <section class="field">
         <span class="label">Priorité</span>
@@ -313,10 +319,44 @@ async function feedbackScreen(id, isNew) {
     </main>`;
 
   const save = async (patch) => { f = { ...f, ...patch }; await db.put('feedbacks', f); };
-  const note = app.querySelector('#note');
+  // Notes en liste : un point par ligne, le premier sert de titre.
+  const list = app.querySelector('#points');
+  const note = { get value() { return [...list.querySelectorAll('input')].map((i) => i.value.trim()).filter(Boolean).join('\n'); } };
+  const pointHtml = (text) => `<li class="point"><span class="bullet" aria-hidden="true"></span>
+    <input class="point-input" value="${esc(text)}" enterkeyhint="next" autocomplete="off">
+    <button class="point-del" data-act="del-point" aria-label="Supprimer ce point">${ICON.x}</button></li>`;
+  const placeholders = () => list.querySelectorAll('input').forEach((inp, i) => {
+    inp.placeholder = i ? 'Un autre point' : 'Le problème ou l\'idée (sert de titre)';
+    inp.setAttribute('aria-label', `Point ${i + 1}`);
+  });
+  const addPoint = (after, text = '') => {
+    const tmp = document.createElement('ul');
+    tmp.innerHTML = pointHtml(text);
+    const li = tmp.firstElementChild;
+    if (after) after.after(li); else list.append(li);
+    placeholders();
+    return li.querySelector('input');
+  };
+  const items = (f.note || '').split('\n').map((x) => x.trim()).filter(Boolean);
+  (items.length ? items : ['']).forEach((t) => addPoint(null, t));
   let timer;
-  note.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(() => save({ note: note.value }), 300); });
-  note.addEventListener('blur', () => { clearTimeout(timer); save({ note: note.value }); });
+  const saveNote = () => { clearTimeout(timer); return save({ note: note.value }); };
+  list.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(saveNote, 300); });
+  list.addEventListener('focusout', saveNote);
+  list.addEventListener('keydown', (e) => {
+    const inp = e.target.closest('input');
+    if (!inp) return;
+    const li = inp.closest('li');
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      addPoint(li).focus();
+    } else if (e.key === 'Backspace' && !inp.value && list.children.length > 1) {
+      e.preventDefault();
+      const prev = li.previousElementSibling?.querySelector('input') || li.nextElementSibling?.querySelector('input');
+      li.remove(); placeholders(); saveNote();
+      prev?.focus();
+    }
+  });
 
   const annotate = async (imgId) => {
     const img = await db.get('images', imgId);
@@ -343,7 +383,15 @@ async function feedbackScreen(id, isNew) {
     const t = e.target.closest('[data-act]');
     if (!t) return;
     const act = t.dataset.act;
-    if (act === 'prio') {
+    if (act === 'add-point') {
+      const inputs = list.querySelectorAll('input');
+      const last = inputs[inputs.length - 1];
+      (last && !last.value.trim() ? last : addPoint(list.lastElementChild)).focus();
+    } else if (act === 'del-point') {
+      const li = t.closest('li');
+      if (list.children.length > 1) li.remove(); else li.querySelector('input').value = '';
+      placeholders(); saveNote();
+    } else if (act === 'prio') {
       await save({ priority: f.priority === t.dataset.p ? null : t.dataset.p });
       app.querySelectorAll('[data-act="prio"]').forEach((b) => b.setAttribute('aria-pressed', b.dataset.p === f.priority));
     } else if (act === 'status') {
@@ -369,7 +417,7 @@ async function feedbackScreen(id, isNew) {
       }
     }
   };
-  if (isNew) note.focus();
+  if (isNew) list.querySelector('input').focus();
 }
 
 function notFound() {
@@ -391,6 +439,7 @@ async function route() {
   const [, kind, id] = path.split('/');
   await cleanupEmpty(kind === 'f' ? id : null);
   currentFeedback = kind === 'f' ? id : null;
+  dismissAll();
   releaseUrls();
   app.onclick = null;
   window.scrollTo(0, 0);

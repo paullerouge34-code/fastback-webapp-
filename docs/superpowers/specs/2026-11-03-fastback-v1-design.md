@@ -78,3 +78,11 @@ Les images sont jointes dans le même ordre (nommées `fb1-img1.jpg`…).
 ## Laissé au développeur
 
 Style visuel (reprend la maquette), détails d'interaction, messages d'erreur.
+
+## Retours de Paul après le premier test (2026-11-04)
+
+1. **Notes en liste** : la note d'un feedback est une liste de points (un champ par point, Entrée ajoute un point, Retour arrière sur un point vide le supprime). Le premier point sert de titre. Stocké comme avant : un point par ligne dans `note`. Dans le message pour Claude, les points suivants sont des tirets.
+2. **Outil Déplacer** dans l'annotation : toucher une annotation la sélectionne. On peut la glisser, la redimensionner avec les ronds blancs (coins, ou extrémités pour une flèche), changer sa couleur ou son épaisseur, la supprimer (corbeille). Toucher un texte déjà sélectionné permet de le modifier.
+3. **Couleur = importance** : rouge = haute, orange = moyenne, vert = basse (pastilles H / M / B). Si une capture utilise ces couleurs, le message pour Claude explique ce code couleur.
+4. **Bouton retour du téléphone** : il ferme la feuille ouverte (envoi, menus) ou l'écran d'annotation, au lieu de changer de page derrière. Depuis l'annotation, le retour garde ce qui a été dessiné (`js/overlay.js`).
+
