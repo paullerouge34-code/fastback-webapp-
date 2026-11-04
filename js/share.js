@@ -3,6 +3,7 @@ import * as db from './db.js';
 import { COLOR_PRIO } from './annotate.js';
 
 const PRIO_LABEL = { high: 'haute', mid: 'moyenne', low: 'basse' };
+const TYPE_LABEL = { bug: 'bug', idea: 'idée', design: 'design' };
 const PRIO_ORDER = { high: 0, mid: 1, low: 2 };
 
 export const sortByPriority = (list) =>
@@ -22,7 +23,7 @@ export async function buildMessage({ project, scope, items }) {
   }
   for (const [n, { feedback: f, label }] of sorted.entries()) {
     const num = n + 1;
-    const tags = [f.priority ? `priorité ${PRIO_LABEL[f.priority]}` : null, label ? `session ${label}` : null].filter(Boolean);
+    const tags = [TYPE_LABEL[f.type] || null, f.priority ? `priorité ${PRIO_LABEL[f.priority]}` : null, label ? `session ${label}` : null].filter(Boolean);
     const [first, ...rest] = (f.note || '').trim().split('\n');
     lines.push('');
     lines.push(`${num}. ${tags.length ? `[${tags.join(' · ')}] ` : ''}${first || '(pas de note, voir les captures)'}`);

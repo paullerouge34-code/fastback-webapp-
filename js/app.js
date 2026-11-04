@@ -4,9 +4,35 @@ import { buildMessage, send, sortByPriority } from './share.js';
 import { pushOverlay, dismissAll } from './overlay.js';
 import { enableReorder } from './reorder.js';
 import { APP_VERSION, APP_DATE } from './version.js';
+import * as backup from './backup.js';
 
 const app = document.getElementById('app');
 const PRIO = { high: 'Haute', mid: 'Moyenne', low: 'Basse' };
+const TYPES = { bug: 'Bug', idea: 'Idée', design: 'Design' };
+
+// Préférences d'affichage d'une session (filtre et tri), gardées sur ce téléphone.
+const VIEW_KEY = 'fastback-session-view';
+const getView = () => { try { return { filter: 'all', sort: 'manual', ...JSON.parse(localStorage.getItem(VIEW_KEY) || '{}') }; } catch { return { filter: 'all', sort: 'manual' }; } };
+const setView = (v) => { try { localStorage.setItem(VIEW_KEY, JSON.stringify(v)); } catch { /* sans importance */ } };
+
+// Propose les autres sessions du projet et y déplace le feedback.
+async function moveFeedback(fbId, projectId, currentSessionId) {
+  const targets = [];
+  for (const b of await db.listBranches(projectId)) {
+    for (const s of await db.listSessions(b.id)) {
+      if (s.id !== currentSessionId) targets.push({ label: `${db.sessionLabel(b, s)} · ${fmtDate(s.createdAt)}`, value: s.id });
+    }
+  }
+  if (!targets.length) { toast('Crée d\'abord une autre session dans ce projet'); return null; }
+  // Les actions s'affichent de bas en haut : on inverse pour lire dans l'ordre.
+  const to = await sheet({ title: 'Déplacer vers…', actions: [{ label: 'Fermer', value: null }, ...targets.reverse()] });
+  if (!to) return null;
+  const f = await db.get('feedbacks', fbId);
+  await db.put('feedbacks', { ...f, sessionId: to, order: Date.now() });
+  const { branch, session } = await db.context({ sessionId: to });
+  toast(`Déplacé dans ${db.sessionLabel(branch, session)}`);
+  return to;
+}
 
 // ---------- Petits utilitaires ----------
 const esc = (s = '') => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -139,8 +165,48 @@ async function projectsScreen() {
         <p class="empty-title">Aucun projet pour l'instant</p>
         <p class="muted">Crée un projet par app que tu testes, par exemple DopaBreak.</p></div>`}
       <button class="btn primary wide" data-act="new-project">${ICON.plus} Nouveau projet</button>
+      <section class="backup">
+        <span class="label">Sauvegarde</span>
+        <p class="muted">${backup.lastBackup() ? `Dernière sauvegarde : ${fmtDate(backup.lastBackup())}` : 'Aucune sauvegarde pour l\'instant. Tes feedbacks ne sont que sur ce téléphone.'}</p>
+        <div class="actions-row">
+          <button class="btn ghost" data-act="export">Exporter</button>
+          <label class="btn ghost">Importer<input type="file" id="import-file" accept="application/json,.json" hidden></label>
+        </div>
+      </section>
       <p class="version">Fastback version ${APP_VERSION} · ${APP_DATE}</p>
     </main>`;
+  app.querySelector('[data-act="export"]').onclick = async () => {
+    const { file, counts } = await backup.exportFile();
+    const canShare = navigator.canShare?.({ files: [file] });
+    await sheet({
+      title: 'Sauvegarde prête',
+      body: `<p class="muted">${plural(counts.projects, 'projet')}, ${plural(counts.feedbacks, 'feedback')}, ${plural(counts.images, 'capture')}. Garde ce fichier en lieu sûr, par exemple dans Google Drive.</p>`,
+      actions: [
+        { label: 'Fermer', value: null },
+        { label: 'Télécharger le fichier', value: null, kind: canShare ? 'ghost' : 'primary', run: () => { backup.download(file); toast('Fichier enregistré dans Téléchargements'); } },
+        ...(canShare ? [{ label: 'Partager (Drive…)', value: null, kind: 'primary', run: () => navigator.share({ files: [file] }).catch(() => {}) }] : []),
+      ],
+    });
+    route();
+  };
+  app.querySelector('#import-file').onchange = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    try {
+      const data = await backup.readFile(file);
+      const ok = await sheet({
+        title: 'Importer cette sauvegarde ?',
+        body: `<p class="muted">${plural(data.projects.length, 'projet')}, ${plural((data.feedbacks || []).length, 'feedback')}. Ce qui est déjà sur ce téléphone est gardé ; les éléments identiques sont remplacés.</p>`,
+        actions: [{ label: 'Annuler', value: false }, { label: 'Importer', kind: 'primary', value: true }],
+      });
+      if (!ok) return;
+      await backup.importData(data);
+      toast('Sauvegarde importée');
+      route();
+    } catch (err) {
+      toast(err.message);
+    }
+  };
   app.querySelector('[data-act="new-project"]').onclick = async () => {
     const name = await askName('Nouveau projet');
     if (!name) return;
@@ -159,21 +225,23 @@ async function projectScreen(id) {
   const cols = [];
   for (const b of branches) {
     const sessions = await db.listSessions(b.id);
-    let branchTodo = 0;
+    let branchTodo = 0, branchTotal = 0;
     const nodes = [];
     for (const s of sessions) {
       const fbs = await db.listFeedbacks(s.id);
       const todo = fbs.filter((f) => f.status === 'todo');
       branchTodo += todo.length;
+      branchTotal += fbs.length;
       const top = sortByPriority(todo)[0];
-      nodes.push(`<a class="node leaf" href="#/s/${s.id}">
+      const allDone = fbs.length && !todo.length;
+      nodes.push(`<a class="node leaf${allDone ? ' all-done' : ''}" href="#/s/${s.id}">
         <span class="dot ${top?.priority || (todo.length ? 'none' : 'ok')}"></span>
         <span class="v">${db.sessionLabel(b, s)}</span>
         <span class="t">${fmtDate(s.createdAt)} · ${fbs.length ? (todo.length ? `${todo.length} à faire` : 'tout corrigé') : 'vide'}</span>
       </a>`);
     }
     cols.push(`<div class="branch" data-branch>
-      <button class="node branch-head" data-head data-act="branch-menu" data-id="${b.id}" data-v="${b.version}" data-n="${sessions.length}"><span>Feedback v${b.version} <i aria-hidden="true">⋯</i></span><small>${plural(sessions.length, 'session')}${branchTodo ? ` · ${branchTodo} à faire` : ''}</small></button>
+      <button class="node branch-head${branchTotal && !branchTodo ? ' all-done' : ''}" data-head data-act="branch-menu" data-id="${b.id}" data-v="${b.version}" data-n="${sessions.length}"><span>Feedback v${b.version} <i aria-hidden="true">⋯</i></span><small>${plural(sessions.length, 'session')}${branchTodo ? ` · ${branchTodo} à faire` : branchTotal ? ' · tout corrigé ✓' : ''}</small></button>
       ${nodes.join('')}
       <button class="add" data-act="new-session" data-id="${b.id}">${ICON.plus} Nouvelle session</button>
     </div>`);
@@ -329,13 +397,17 @@ async function sessionScreen(id) {
   if (!session || !branch || !project) return notFound();
   const label = db.sessionLabel(branch, session);
   const fbs = await db.listFeedbacks(id);
-  const cards = await Promise.all(fbs.map(async (f) => {
+  const view = getView();
+  const counts = { all: fbs.length, todo: fbs.filter((f) => f.status === 'todo').length, done: fbs.filter((f) => f.status === 'done').length };
+  let shown = view.filter === 'all' ? fbs : fbs.filter((f) => f.status === view.filter);
+  if (view.sort === 'prio') shown = sortByPriority(shown);
+  const cards = await Promise.all(shown.map(async (f) => {
     const img = f.imageIds[0] ? await db.get('images', f.imageIds[0]) : null;
     const thumb = img ? `<img src="${blobUrl(img.rendered || img.original)}" alt="">` : '<span>Texte</span>';
     return `<a class="fb-card ${f.status === 'done' ? 'done' : ''}" href="#/f/${f.id}" data-id="${f.id}">
       <span class="thumb">${thumb}${f.imageIds.length > 1 ? `<b>${f.imageIds.length}</b>` : ''}</span>
       <span class="fb-c"><span class="fb-t">${esc(firstLine(f.note)) || '<i class="muted">Sans note</i>'}</span>
-      <span class="row">${f.priority ? `<span class="chip ${f.priority}">${PRIO[f.priority]}</span>` : ''}<span class="chip status">${f.status === 'done' ? 'Corrigé' : 'À faire'}</span></span></span>
+      <span class="row">${f.type ? `<span class="chip type">${TYPES[f.type]}</span>` : ''}${f.priority ? `<span class="chip ${f.priority}">${PRIO[f.priority]}</span>` : ''}<span class="chip status">${f.status === 'done' ? 'Corrigé' : 'À faire'}</span></span></span>
     </a>`;
   }));
   const todo = fbs.filter((f) => f.status === 'todo');
@@ -351,30 +423,48 @@ async function sessionScreen(id) {
   };
   app.innerHTML = `${bar(`${label} · ${fmtDate(session.createdAt)}`, { back: `#/p/${project.id}`, menu: true, sub: `${project.name} › Feedback v${branch.version}` })}
     <main class="page">
-      ${cards.length ? `<div class="stack" id="fb-list">${cards.join('')}</div>${cards.length > 1 ? '<p class="hint">Maintiens une carte pour changer son ordre ou la supprimer.</p>' : ''}` : `<div class="empty"><p class="empty-title">Session vide</p><p class="muted">Ajoute un feedback pour chaque problème ou idée trouvé pendant ton test.</p></div>`}
+      ${fbs.length ? `<div class="toolbar">
+        <div class="filters" role="group" aria-label="Filtre">
+          ${[['all', 'Tous'], ['todo', 'À faire'], ['done', 'Corrigés']].map(([k, l]) => `<button class="filter" data-act="filter" data-f="${k}" aria-pressed="${view.filter === k}">${l} <b>${counts[k]}</b></button>`).join('')}
+        </div>
+        <button class="sort" data-act="sort">${view.sort === 'prio' ? 'Tri : priorité' : 'Tri : mon ordre'}</button>
+      </div>` : ''}
+      ${cards.length ? `<div class="stack" id="fb-list">${cards.join('')}</div>${cards.length > 1 ? `<p class="hint">${view.sort === 'prio' ? 'Trié par priorité. Passe en « mon ordre » pour déplacer les cartes.' : 'Maintiens une carte pour changer son ordre, la déplacer ou la supprimer.'}</p>` : ''}`
+        : fbs.length ? `<div class="empty"><p class="empty-title">${view.filter === 'todo' ? 'Rien à faire ici' : 'Aucun feedback corrigé'}</p><p class="muted">Change de filtre pour voir les autres feedbacks.</p></div>`
+        : `<div class="empty"><p class="empty-title">Session vide</p><p class="muted">Ajoute un feedback pour chaque problème ou idée trouvé pendant ton test.</p></div>`}
       <button class="btn primary wide" data-act="new-fb">${ICON.plus} Nouveau feedback</button>
       ${fbs.length ? `<button class="btn ghost wide" data-act="send">${ICON.send} Envoyer cette session à Claude${todo.length ? ` (${todo.length})` : ''}</button>` : ''}
     </main>`;
   const fbList = app.querySelector('#fb-list');
   if (fbList) {
     enableReorder(fbList, {
-      onReorder: async (ids) => { await db.reorderFeedbacks(ids); route(); },
+      onReorder: async (ids) => {
+        if (view.sort === 'prio') { toast('Passe en « Tri : mon ordre » pour déplacer les cartes'); return route(); }
+        // Les cartes cachées par le filtre gardent leur place.
+        const queue = [...ids];
+        const visible = new Set(ids);
+        await db.reorderFeedbacks(fbs.map((f) => (visible.has(f.id) ? queue.shift() : f.id)));
+        route();
+      },
       onDelete: removeWithUndo,
       onHold: async (fbId) => {
         const f = fbs.find((x) => x.id === fbId);
         const c = await sheet({
           title: firstLine(f.note) || 'Feedback',
           body: '<p class="muted">Pour changer l\'ordre, maintiens la carte puis glisse-la.</p>',
-          actions: [{ label: 'Supprimer ce feedback', value: 'delete', kind: 'danger' }, { label: 'Fermer', value: null }],
+          actions: [{ label: 'Supprimer ce feedback', value: 'delete', kind: 'danger' }, { label: 'Déplacer vers une autre session', value: 'move' }, { label: 'Fermer', value: null }],
         });
         if (c === 'delete') removeWithUndo(fbId);
+        else if (c === 'move' && await moveFeedback(fbId, project.id, id)) route();
       },
     });
   }
   app.onclick = async (e) => {
     const t = e.target.closest('[data-act]');
     if (!t) return;
-    if (t.dataset.act === 'new-fb') {
+    if (t.dataset.act === 'filter') { setView({ ...view, filter: t.dataset.f }); route(); }
+    else if (t.dataset.act === 'sort') { setView({ ...view, sort: view.sort === 'prio' ? 'manual' : 'prio' }); route(); }
+    else if (t.dataset.act === 'new-fb') {
       const f = await db.createFeedback(id);
       location.hash = `#/f/${f.id}?new`;
     } else if (t.dataset.act === 'send') {
@@ -416,6 +506,12 @@ async function feedbackScreen(id, isNew) {
         <span class="label" id="points-label">Notes</span>
         <ul class="points" id="points" aria-labelledby="points-label"></ul>
         <button class="add-point" data-act="add-point">${ICON.plus} Ajouter un point</button>
+      </section>
+      <section class="field">
+        <span class="label">Type</span>
+        <div class="seg" role="group" aria-label="Type">
+          ${Object.entries(TYPES).map(([k, l]) => `<button class="seg-btn" data-act="type" data-t="${k}" aria-pressed="${f.type === k}">${l}</button>`).join('')}
+        </div>
       </section>
       <section class="field">
         <span class="label">Priorité</span>
@@ -478,8 +574,8 @@ async function feedbackScreen(id, isNew) {
 
   const annotate = async (imgId) => {
     const img = await db.get('images', imgId);
-    const res = await openAnnotator(img.original, img.shapes || []);
-    if (res) { await db.put('images', { ...img, shapes: res.shapes, rendered: res.rendered }); }
+    const res = await openAnnotator(img.original, img.shapes || [], img.crop || null);
+    if (res) { await db.put('images', { ...img, shapes: res.shapes, crop: res.crop, rendered: res.rendered }); }
     route();
   };
 
@@ -509,6 +605,9 @@ async function feedbackScreen(id, isNew) {
       const li = t.closest('li');
       if (list.children.length > 1) li.remove(); else li.querySelector('input').value = '';
       placeholders(); saveNote();
+    } else if (act === 'type') {
+      await save({ type: f.type === t.dataset.t ? null : t.dataset.t });
+      app.querySelectorAll('[data-act="type"]').forEach((b) => b.setAttribute('aria-pressed', b.dataset.t === f.type));
     } else if (act === 'prio') {
       await save({ priority: f.priority === t.dataset.p ? null : t.dataset.p });
       app.querySelectorAll('[data-act="prio"]').forEach((b) => b.setAttribute('aria-pressed', b.dataset.p === f.priority));
@@ -532,8 +631,11 @@ async function feedbackScreen(id, isNew) {
       if (!f.note.trim() && !f.imageIds.length) return toast('Ajoute une note ou une capture avant d\'envoyer');
       sendSheet({ project, scope: `v${branch.version}, session ${label}`, items: [{ feedback: f, label: null }] });
     } else if (act === 'menu') {
-      const c = await sheet({ title: 'Feedback', actions: [{ label: 'Supprimer le feedback', value: 'delete', kind: 'danger' }, { label: 'Fermer', value: null }] });
-      if (c === 'delete' && await confirmDelete('ce feedback')) {
+      const c = await sheet({ title: 'Feedback', actions: [{ label: 'Supprimer le feedback', value: 'delete', kind: 'danger' }, { label: 'Déplacer vers une autre session', value: 'move' }, { label: 'Fermer', value: null }] });
+      if (c === 'move') {
+        await saveNote();
+        if (await moveFeedback(id, project.id, session.id)) route();
+      } else if (c === 'delete' && await confirmDelete('ce feedback')) {
         await db.deleteFeedback(id);
         location.hash = `#/s/${session.id}`;
       }

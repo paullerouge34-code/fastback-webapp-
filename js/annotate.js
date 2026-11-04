@@ -1,5 +1,5 @@
 // Éditeur d'annotation plein écran : déplacer, dessin libre, flèche, rectangle, cercle, texte, flou.
-// openAnnotator(originalBlob, shapes) → Promise<{ shapes, rendered } | null>
+// openAnnotator(originalBlob, shapes, crop) → Promise<{ shapes, crop, rendered } | null>
 import { pushOverlay } from './overlay.js';
 
 const MAX_SIDE = 2000;
@@ -26,11 +26,12 @@ const ICONS = {
   blur: '<path d="M4 4h4v4H4zM12 4h4v4h-4zM8 8h4v4H8zM16 8h4v4h-4zM4 12h4v4H4zM12 12h4v4h-4zM8 16h4v4H8zM16 16h4v4h-4z"/>',
   undo: '<path d="M9 14 4 9l5-5M4 9h11a5 5 0 0 1 0 10h-3"/>',
   redo: '<path d="M15 14l5-5-5-5M20 9H9a5 5 0 0 0 0 10h3"/>',
+  crop: '<path d="M6 2v14a2 2 0 0 0 2 2h14M2 6h14a2 2 0 0 1 2 2v14"/>',
   trash: '<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6"/>',
 };
 const TOOLS = [
   ['move', 'Déplacer'], ['pen', 'Dessin'], ['arrow', 'Flèche'], ['rect', 'Rectangle'],
-  ['ellipse', 'Cercle'], ['text', 'Texte'], ['blur', 'Flou'],
+  ['ellipse', 'Cercle'], ['text', 'Texte'], ['blur', 'Flou'], ['crop', 'Recadrer'],
 ];
 
 const svg = (d) => `<svg viewBox="0 0 24 24" aria-hidden="true">${d}</svg>`;
@@ -201,11 +202,13 @@ function fitSize(img) {
 }
 
 // ---------- Éditeur ----------
-export async function openAnnotator(original, initialShapes = []) {
+export async function openAnnotator(original, initialShapes = [], initialCrop = null) {
   const img = await loadImage(original);
   const { w, h } = fitSize(img);
   const base = Math.max(w, h) / 220;
   let shapes = clone(initialShapes);
+  // Recadrage : rectangle gardé, en coordonnées de l'image entière (null = toute l'image).
+  let crop = initialCrop ? clone(initialCrop) : null;
   const undoStack = [];
   const redoStack = [];
   let tapHit = null;
@@ -250,14 +253,39 @@ export async function openAnnotator(original, initialShapes = []) {
   const stage = root.querySelector('.annot-stage');
   const hint = root.querySelector('.annot-hint');
   const ctx = canvas.getContext('2d');
-  canvas.width = w; canvas.height = h;
-
-  const scale = () => canvas.getBoundingClientRect().width / w || 1;
+  // Partie de l'image affichée : tout en mode Recadrer, sinon le cadre gardé.
+  const full = { x: 0, y: 0, w, h };
+  const view = () => (tool === 'crop' || !crop ? full : crop);
+  const scale = () => canvas.getBoundingClientRect().width / view().w || 1;
   const fit = () => {
+    const v = view();
+    if (canvas.width !== Math.round(v.w) || canvas.height !== Math.round(v.h)) {
+      canvas.width = Math.round(v.w); canvas.height = Math.round(v.h);
+    }
     const r = stage.getBoundingClientRect();
-    const k = Math.min(r.width / w, r.height / h);
-    canvas.style.width = `${w * k}px`;
-    canvas.style.height = `${h * k}px`;
+    const k = Math.min(r.width / v.w, r.height / v.h);
+    canvas.style.width = `${v.w * k}px`;
+    canvas.style.height = `${v.h * k}px`;
+  };
+  const cropHandles = (c) => [
+    { id: 'nw', x: c.x, y: c.y }, { id: 'ne', x: c.x + c.w, y: c.y },
+    { id: 'sw', x: c.x, y: c.y + c.h }, { id: 'se', x: c.x + c.w, y: c.y + c.h },
+  ];
+  const drawCrop = () => {
+    const c = crop || full, k = scale();
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, 0, w, h);
+    ctx.rect(c.x, c.y, c.w, c.h);
+    ctx.fillStyle = 'rgba(0, 0, 0, .58)';
+    ctx.fill('evenodd');
+    ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2 / k;
+    ctx.strokeRect(c.x, c.y, c.w, c.h);
+    for (const hd of cropHandles(c)) {
+      ctx.beginPath(); ctx.arc(hd.x, hd.y, 10 / k, 0, Math.PI * 2);
+      ctx.fillStyle = '#ffffff'; ctx.fill();
+    }
+    ctx.restore();
   };
   const drawSelection = () => {
     const s = shapes[selected];
@@ -285,8 +313,11 @@ export async function openAnnotator(original, initialShapes = []) {
     ctx.restore();
   };
   const redraw = () => {
+    const v = view();
+    ctx.setTransform(1, 0, 0, 1, -v.x, -v.y);
     renderShapes(ctx, img, draft ? [...shapes, draft] : shapes, w, h);
-    drawSelection();
+    if (tool === 'crop') drawCrop(); else drawSelection();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
   };
   const syncUI = () => {
     const sel = shapes[selected];
@@ -296,16 +327,25 @@ export async function openAnnotator(original, initialShapes = []) {
     root.querySelectorAll('.annot-width').forEach((b) => b.setAttribute('aria-pressed', Number(b.dataset.k) === (sel?.k ?? widthK)));
     root.querySelector('[data-act="undo"]').disabled = !undoStack.length;
     root.querySelector('[data-act="redo"]').disabled = !redoStack.length;
-    root.querySelector('[data-act="delete"]').hidden = !sel;
-    hint.textContent = tool === 'move'
-      ? (sel ? 'Glisse pour déplacer, tire un rond blanc pour changer la taille. Touche une couleur pour la changer.' : 'Touche une annotation pour la sélectionner.')
-      : 'Rouge = importance haute · Orange = moyenne · Vert = basse';
+    root.querySelector('[data-act="delete"]').hidden = tool === 'crop' ? !crop : !sel;
+    hint.textContent = tool === 'crop'
+      ? 'Trace le cadre à garder, tire les ronds blancs pour l\'ajuster. La corbeille enlève le recadrage.'
+      : tool === 'move'
+        ? (sel ? 'Glisse pour déplacer, tire un rond blanc pour changer la taille. Touche une couleur pour la changer.' : 'Touche une annotation pour la sélectionner.')
+        : 'Rouge = importance haute · Orange = moyenne · Vert = basse';
   };
-  const commit = () => { undoStack.push(clone(shapes)); redoStack.length = 0; };
+  const state = () => clone({ shapes, crop });
+  const restore = (st) => { shapes = st.shapes; crop = st.crop; };
+  const commit = () => { undoStack.push(state()); redoStack.length = 0; };
   const pos = (e) => {
-    const r = canvas.getBoundingClientRect();
-    return [((e.clientX - r.left) / r.width) * w, ((e.clientY - r.top) / r.height) * h];
+    const r = canvas.getBoundingClientRect(), v = view();
+    return [v.x + ((e.clientX - r.left) / r.width) * v.w, v.y + ((e.clientY - r.top) / r.height) * v.h];
   };
+  const clampCrop = (c) => {
+    const x = Math.max(0, Math.min(c.x, w)), y = Math.max(0, Math.min(c.y, h));
+    return { x, y, w: Math.min(c.w, w - x), h: Math.min(c.h, h - y) };
+  };
+  const rectFrom = (a, b) => clampCrop({ x: Math.min(a[0], b[0]), y: Math.min(a[1], b[1]), w: Math.abs(b[0] - a[0]), h: Math.abs(b[1] - a[1]) });
   const select = (i) => { selected = i; redraw(); syncUI(); };
 
   fit(); redraw(); syncUI();
@@ -341,13 +381,21 @@ export async function openAnnotator(original, initialShapes = []) {
     e.preventDefault();
     const p = pos(e);
     const tol = 14 / scale();
+    if (tool === 'crop') {
+      const c = crop || full;
+      const hd = cropHandles(c).find((x) => Math.hypot(x.x - p[0], x.y - p[1]) < tol * 1.6);
+      const inside = crop && p[0] > c.x && p[0] < c.x + c.w && p[1] > c.y && p[1] < c.y + c.h;
+      drag = { mode: hd ? `crop-${hd.id}` : inside ? 'crop-move' : 'crop-new', start: p, snapCrop: clone(c), before: state(), changed: false };
+      canvas.setPointerCapture(e.pointerId);
+      return;
+    }
     const sel = shapes[selected];
     let found = null;
     for (let i = shapes.length - 1; i >= 0; i--) if (hit(ctx, shapes[i], p, tol)) { found = i; break; }
     // Une annotation déjà sélectionnée se déplace ou se redimensionne quel que soit l'outil.
     const hd = sel && handles(ctx, sel).find((x) => Math.hypot(x.x - p[0], x.y - p[1]) < tol * 1.4);
     if (hd) {
-      drag = { mode: hd.id, start: p, snap: clone(sel), before: clone(shapes), changed: false };
+      drag = { mode: hd.id, start: p, snap: clone(sel), before: state(), changed: false };
       canvas.setPointerCapture(e.pointerId);
       return;
     }
@@ -355,7 +403,7 @@ export async function openAnnotator(original, initialShapes = []) {
       const wasSelected = found != null && found === selected;
       select(found);
       if (found != null) {
-        drag = { mode: 'move', start: p, snap: clone(shapes[found]), before: clone(shapes), changed: false, wasSelected };
+        drag = { mode: 'move', start: p, snap: clone(shapes[found]), before: state(), changed: false, wasSelected };
         canvas.setPointerCapture(e.pointerId);
       }
       return;
@@ -382,6 +430,19 @@ export async function openAnnotator(original, initialShapes = []) {
       const dx = p[0] - drag.start[0], dy = p[1] - drag.start[1];
       if (!drag.changed && Math.hypot(dx, dy) < 4 / scale()) return;
       drag.changed = true;
+      if (drag.mode.startsWith('crop')) {
+        const c = drag.snapCrop;
+        if (drag.mode === 'crop-new') crop = rectFrom(drag.start, p);
+        else if (drag.mode === 'crop-move') {
+          crop = { ...c, x: Math.max(0, Math.min(w - c.w, c.x + dx)), y: Math.max(0, Math.min(h - c.h, c.y + dy)) };
+        } else {
+          const id = drag.mode.slice(5);
+          const fixed = [id.includes('w') ? c.x + c.w : c.x, id.includes('n') ? c.y + c.h : c.y];
+          crop = rectFrom(fixed, p);
+        }
+        redraw();
+        return;
+      }
       shapes[selected] = drag.mode === 'move' ? moved(drag.snap, dx, dy) : resized(ctx, drag.snap, drag.mode, p);
       redraw();
       return;
@@ -394,6 +455,8 @@ export async function openAnnotator(original, initialShapes = []) {
 
   const end = () => {
     if (drag) {
+      // Un cadre trop petit (simple appui) est ignoré.
+      if (drag.mode.startsWith('crop') && crop && (crop.w < base * 8 || crop.h < base * 8)) { restore(drag.before); drag.changed = false; }
       if (drag.changed) { undoStack.push(drag.before); redoStack.length = 0; }
       else if (drag.wasSelected && shapes[selected]?.type === 'text') askText(null, selected);
       drag = null; redraw(); syncUI();
@@ -427,9 +490,13 @@ export async function openAnnotator(original, initialShapes = []) {
       resolve(result);
     };
     const save = () => {
-      selected = null;
-      renderShapes(ctx, img, shapes, w, h);
-      return new Promise((r) => canvas.toBlob((rendered) => r({ shapes, rendered }), 'image/jpeg', 0.86));
+      const c = crop || full;
+      const out = document.createElement('canvas');
+      out.width = Math.round(c.w); out.height = Math.round(c.h);
+      const octx = out.getContext('2d');
+      octx.setTransform(1, 0, 0, 1, -c.x, -c.y);
+      renderShapes(octx, img, shapes, w, h);
+      return new Promise((r) => out.toBlob((rendered) => r({ shapes, crop, rendered }), 'image/jpeg', 0.86));
     };
     // Retour du téléphone : on garde ce qui a été dessiné.
     const release = pushOverlay(async () => finish(await save()));
@@ -442,7 +509,7 @@ export async function openAnnotator(original, initialShapes = []) {
       if (t.dataset.tool) {
         tool = t.dataset.tool;
         if (tool !== 'move') selected = null;
-        redraw(); syncUI();
+        fit(); redraw(); syncUI();
       } else if (t.dataset.color) {
         color = t.dataset.color;
         if (sel && sel.type !== 'blur') { commit(); sel.color = color; redraw(); }
@@ -458,11 +525,12 @@ export async function openAnnotator(original, initialShapes = []) {
         }
         syncUI();
       } else if (t.dataset.act === 'undo') {
-        if (undoStack.length) { redoStack.push(clone(shapes)); shapes = undoStack.pop(); selected = null; redraw(); syncUI(); }
+        if (undoStack.length) { redoStack.push(state()); restore(undoStack.pop()); selected = null; fit(); redraw(); syncUI(); }
       } else if (t.dataset.act === 'redo') {
-        if (redoStack.length) { undoStack.push(clone(shapes)); shapes = redoStack.pop(); selected = null; redraw(); syncUI(); }
+        if (redoStack.length) { undoStack.push(state()); restore(redoStack.pop()); selected = null; fit(); redraw(); syncUI(); }
       } else if (t.dataset.act === 'delete') {
-        if (sel) { commit(); shapes.splice(selected, 1); selected = null; redraw(); syncUI(); }
+        if (tool === 'crop') { if (crop) { commit(); crop = null; redraw(); syncUI(); } }
+        else if (sel) { commit(); shapes.splice(selected, 1); selected = null; redraw(); syncUI(); }
       } else if (t.dataset.act === 'text-cancel') {
         textForm.hidden = true; textAt = null; textEdit = null;
       } else if (t.dataset.act === 'cancel') {
