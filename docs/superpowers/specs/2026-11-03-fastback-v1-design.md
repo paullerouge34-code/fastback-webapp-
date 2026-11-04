@@ -86,3 +86,9 @@ Style visuel (reprend la maquette), détails d'interaction, messages d'erreur.
 3. **Couleur = importance** : rouge = haute, orange = moyenne, vert = basse (pastilles H / M / B). Si une capture utilise ces couleurs, le message pour Claude explique ce code couleur.
 4. **Bouton retour du téléphone** : il ferme la feuille ouverte (envoi, menus) ou l'écran d'annotation, au lieu de changer de page derrière. Depuis l'annotation, le retour garde ce qui a été dessiné (`js/overlay.js`).
 
+## Retours du 2026-11-04 (suite)
+
+1. **Bouton Enregistrer** sur un feedback, à côté de « Envoyer à Claude » : enregistre, confirme par un message et revient à la session. (La saisie reste enregistrée automatiquement au fil de l'eau.)
+2. **Appui long sur une carte de feedback** (`js/reorder.js`) : la carte se soulève. On la glisse pour changer l'ordre (champ `order`, utilisé aussi pour départager les feedbacks de même priorité dans le message), ou on la lâche sur la zone rouge en bas pour la supprimer, avec un bouton « Annuler » pendant 5 secondes. Un appui long sans bouger ouvre un menu avec « Supprimer ».
+3. **Canvas** : grande surface qu'on fait glisser dans tous les sens (haut, bas, gauche, droite). À l'ouverture, le nom du projet est centré en haut ; en revenant d'une session, on retrouve la position où on était.
+
