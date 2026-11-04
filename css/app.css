@@ -78,7 +78,13 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
 
 /* Canvas du projet : grande surface qu'on fait glisser dans tous les sens */
 #app.screen-canvas { height: 100dvh; display: flex; flex-direction: column; }
-.canvas-wrap { flex: 1; min-height: 0; overflow: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
+.canvas-wrap { flex: 1; min-height: 0; overflow: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; touch-action: pan-x pan-y; }
+.zoom { position: fixed; z-index: 6; right: var(--gutter-r); top: calc(env(safe-area-inset-top, 0px) + 74px); display: flex; background: var(--surface); border: 1px solid var(--line); border-radius: 999px; box-shadow: var(--shadow); overflow: hidden; }
+.zoom-btn { border: 0; background: transparent; min-width: 44px; height: 40px; font-size: 20px; font-weight: 600; cursor: pointer; color: var(--fg); }
+.zoom-val { font-size: 13px; font-variant-numeric: tabular-nums; min-width: 58px; color: var(--muted); border-inline: 1px solid var(--line); }
+.branch-head { font: inherit; cursor: pointer; }
+.branch-head i { font-style: normal; color: var(--muted); }
+.steps { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; font-size: 14px; }
 .canvas { padding: 50dvh 60vw; width: max-content; min-width: 100%;
   background-image: radial-gradient(var(--line) 1px, transparent 1px); background-size: 18px 18px; }
 .tree { position: relative; display: flex; flex-direction: column; align-items: center; gap: 32px; }

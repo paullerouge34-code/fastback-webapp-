@@ -25,6 +25,7 @@ const ICONS = {
   text: '<path d="M5 6h14M12 6v13M9 19h6"/>',
   blur: '<path d="M4 4h4v4H4zM12 4h4v4h-4zM8 8h4v4H8zM16 8h4v4h-4zM4 12h4v4H4zM12 12h4v4h-4zM8 16h4v4H8zM16 16h4v4h-4z"/>',
   undo: '<path d="M9 14 4 9l5-5M4 9h11a5 5 0 0 1 0 10h-3"/>',
+  redo: '<path d="M15 14l5-5-5-5M20 9H9a5 5 0 0 0 0 10h3"/>',
   trash: '<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6"/>',
 };
 const TOOLS = [
@@ -206,6 +207,8 @@ export async function openAnnotator(original, initialShapes = []) {
   const base = Math.max(w, h) / 220;
   let shapes = clone(initialShapes);
   const undoStack = [];
+  const redoStack = [];
+  let tapHit = null;
   let tool = 'arrow', color = COLORS[0].c, widthK = 1;
   let draft = null, selected = null, drag = null;
 
@@ -216,6 +219,7 @@ export async function openAnnotator(original, initialShapes = []) {
       <button class="annot-btn" data-act="cancel">Annuler</button>
       <div class="annot-mid">
         <button class="annot-btn icon" data-act="undo" aria-label="Annuler la dernière action">${svg(ICONS.undo)}</button>
+        <button class="annot-btn icon" data-act="redo" aria-label="Rétablir">${svg(ICONS.redo)}</button>
         <button class="annot-btn icon danger" data-act="delete" aria-label="Supprimer l'annotation sélectionnée" hidden>${svg(ICONS.trash)}</button>
       </div>
       <button class="annot-btn primary" data-act="save">Enregistrer</button>
@@ -291,12 +295,13 @@ export async function openAnnotator(original, initialShapes = []) {
     root.querySelectorAll('.annot-color').forEach((b) => b.setAttribute('aria-pressed', b.dataset.color === shownColor));
     root.querySelectorAll('.annot-width').forEach((b) => b.setAttribute('aria-pressed', Number(b.dataset.k) === (sel?.k ?? widthK)));
     root.querySelector('[data-act="undo"]').disabled = !undoStack.length;
+    root.querySelector('[data-act="redo"]').disabled = !redoStack.length;
     root.querySelector('[data-act="delete"]').hidden = !sel;
     hint.textContent = tool === 'move'
       ? (sel ? 'Glisse pour déplacer, tire un rond blanc pour changer la taille. Touche une couleur pour la changer.' : 'Touche une annotation pour la sélectionner.')
       : 'Rouge = importance haute · Orange = moyenne · Vert = basse';
   };
-  const commit = () => undoStack.push(clone(shapes));
+  const commit = () => { undoStack.push(clone(shapes)); redoStack.length = 0; };
   const pos = (e) => {
     const r = canvas.getBoundingClientRect();
     return [((e.clientX - r.left) / r.width) * w, ((e.clientY - r.top) / r.height) * h];
@@ -336,23 +341,33 @@ export async function openAnnotator(original, initialShapes = []) {
     e.preventDefault();
     const p = pos(e);
     const tol = 14 / scale();
-    if (tool === 'move') {
-      const sel = shapes[selected];
-      const hd = sel && handles(ctx, sel).find((x) => Math.hypot(x.x - p[0], x.y - p[1]) < tol * 1.4);
-      if (hd) {
-        drag = { mode: hd.id, start: p, snap: clone(sel), before: clone(shapes), changed: false };
-      } else {
-        let found = null;
-        for (let i = shapes.length - 1; i >= 0; i--) if (hit(ctx, shapes[i], p, tol)) { found = i; break; }
-        const wasSelected = found != null && found === selected;
-        select(found);
-        if (found != null) drag = { mode: 'move', start: p, snap: clone(shapes[found]), before: clone(shapes), changed: false, wasSelected };
+    const sel = shapes[selected];
+    let found = null;
+    for (let i = shapes.length - 1; i >= 0; i--) if (hit(ctx, shapes[i], p, tol)) { found = i; break; }
+    // Une annotation déjà sélectionnée se déplace ou se redimensionne quel que soit l'outil.
+    const hd = sel && handles(ctx, sel).find((x) => Math.hypot(x.x - p[0], x.y - p[1]) < tol * 1.4);
+    if (hd) {
+      drag = { mode: hd.id, start: p, snap: clone(sel), before: clone(shapes), changed: false };
+      canvas.setPointerCapture(e.pointerId);
+      return;
+    }
+    if (tool === 'move' || (sel && found === selected)) {
+      const wasSelected = found != null && found === selected;
+      select(found);
+      if (found != null) {
+        drag = { mode: 'move', start: p, snap: clone(shapes[found]), before: clone(shapes), changed: false, wasSelected };
+        canvas.setPointerCapture(e.pointerId);
       }
-      if (drag) canvas.setPointerCapture(e.pointerId);
       return;
     }
     if (selected != null) select(null);
-    if (tool === 'text') { askText(p); return; }
+    if (tool === 'text') {
+      // Toucher une annotation existante la sélectionne au lieu d'ajouter un texte.
+      if (found != null) { tool = 'move'; select(found); return; }
+      askText(p);
+      return;
+    }
+    tapHit = found;
     canvas.setPointerCapture(e.pointerId);
     const width = Math.max(2, base * widthK);
     draft = tool === 'pen'
@@ -379,14 +394,23 @@ export async function openAnnotator(original, initialShapes = []) {
 
   const end = () => {
     if (drag) {
-      if (drag.changed) undoStack.push(drag.before);
+      if (drag.changed) { undoStack.push(drag.before); redoStack.length = 0; }
       else if (drag.wasSelected && shapes[selected]?.type === 'text') askText(null, selected);
       drag = null; redraw(); syncUI();
       return;
     }
     if (!draft) return;
-    const tiny = draft.type !== 'pen' && Math.hypot(draft.x2 - draft.x1, draft.y2 - draft.y1) < base * 2;
-    if (!tiny) { commit(); shapes.push(draft); }
+    const span = draft.type === 'pen'
+      ? Math.max(...draft.points.map(([x, y]) => Math.hypot(x - draft.points[0][0], y - draft.points[0][1])))
+      : Math.hypot(draft.x2 - draft.x1, draft.y2 - draft.y1);
+    const tiny = span < base * 2;
+    // Un simple appui sur une annotation existante la sélectionne pour la modifier.
+    if (tiny && tapHit != null) {
+      draft = null; tool = 'move'; select(tapHit); tapHit = null;
+      return;
+    }
+    tapHit = null;
+    if (!tiny || draft.type === 'pen') { commit(); shapes.push(draft); }
     draft = null; redraw(); syncUI();
   };
   canvas.addEventListener('pointerup', end);
@@ -434,7 +458,9 @@ export async function openAnnotator(original, initialShapes = []) {
         }
         syncUI();
       } else if (t.dataset.act === 'undo') {
-        if (undoStack.length) { shapes = undoStack.pop(); selected = null; redraw(); syncUI(); }
+        if (undoStack.length) { redoStack.push(clone(shapes)); shapes = undoStack.pop(); selected = null; redraw(); syncUI(); }
+      } else if (t.dataset.act === 'redo') {
+        if (redoStack.length) { undoStack.push(clone(shapes)); shapes = redoStack.pop(); selected = null; redraw(); syncUI(); }
       } else if (t.dataset.act === 'delete') {
         if (sel) { commit(); shapes.splice(selected, 1); selected = null; redraw(); syncUI(); }
       } else if (t.dataset.act === 'text-cancel') {

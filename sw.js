@@ -1,5 +1,5 @@
 // Service worker : réseau d'abord (les mises à jour arrivent tout de suite), cache en secours hors ligne.
-const CACHE = 'fastback-v3';
+const CACHE = 'fastback-v4';
 const SHELL = [
   './', './index.html', './css/app.css', './js/app.js', './js/db.js', './js/annotate.js', './js/share.js', './js/overlay.js', './js/reorder.js',
   './manifest.webmanifest', './icons/icon.svg', './icons/icon-192.png', './icons/icon-512.png',

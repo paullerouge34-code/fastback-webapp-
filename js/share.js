@@ -45,12 +45,15 @@ export async function buildMessage({ project, scope, items }) {
 }
 
 // Renvoie 'shared' | 'shared-text' | 'copied' | 'cancelled' | 'failed'
+// Avec des images, beaucoup d'apps (dont Claude) ignorent le texte partagé :
+// on copie donc aussi le texte, pour pouvoir le coller dans le message.
 export async function send({ text, files }) {
   if (navigator.share) {
     try {
       if (files.length && navigator.canShare?.({ files, text })) {
+        const copied = navigator.clipboard?.writeText(text).then(() => true, () => false) ?? Promise.resolve(false);
         await navigator.share({ text, files });
-        return 'shared';
+        return (await copied) ? 'shared-copied' : 'shared';
       }
       if (!files.length) {
         await navigator.share({ text });
