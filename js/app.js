@@ -97,15 +97,19 @@ async function sendSheet(payload) {
   const copy = () => navigator.clipboard.writeText(msg.text)
     .then(() => toast('Texte copié'), () => toast('Copie impossible sur cet appareil'));
   const share = () => send(msg).then((r) => {
-    if (r === 'copied') toast('Partage indisponible : texte copié à la place');
+    if (r === 'shared-copied') toast('Texte copié : colle-le dans le message Claude');
+    else if (r === 'copied') toast('Partage indisponible : texte copié à la place');
     else if (r === 'failed') toast('Partage impossible sur cet appareil');
   });
   await sheet({
     title: 'Envoyer à Claude',
-    body: `<p class="muted">${n ? `${plural(n, 'image')} + ce texte. ` : ''}Choisis l'app Claude dans le menu de partage.</p><pre class="preview">${esc(msg.text)}</pre>`,
+    body: n
+      ? `<ol class="steps"><li>Appuie sur <b>Partager</b> et choisis l'app Claude : ${plural(n, 'image')} y ${n > 1 ? 'sont ajoutées' : 'est ajoutée'}.</li>
+         <li>Le texte est copié en même temps. Dans Claude, fais un <b>appui long dans la zone de message</b>, puis <b>Coller</b>.</li></ol><pre class="preview">${esc(msg.text)}</pre>`
+      : `<p class="muted">Choisis l'app Claude dans le menu de partage.</p><pre class="preview">${esc(msg.text)}</pre>`,
     actions: [
-      { label: 'Copier le texte', value: null, run: copy },
-      { label: n ? `Partager (texte + ${plural(n, 'image')})` : 'Partager', kind: 'primary', value: null, run: share },
+      { label: 'Copier le texte seulement', value: null, run: copy },
+      { label: n ? `Partager les ${plural(n, 'image')} + copier le texte` : 'Partager', kind: 'primary', value: null, run: share },
     ],
   });
 }
@@ -167,7 +171,7 @@ async function projectScreen(id) {
       </a>`);
     }
     cols.push(`<div class="branch" data-branch>
-      <div class="node branch-head" data-head><span>Feedback v${b.version}</span><small>${plural(sessions.length, 'session')}${branchTodo ? ` · ${branchTodo} à faire` : ''}</small></div>
+      <button class="node branch-head" data-head data-act="branch-menu" data-id="${b.id}" data-v="${b.version}" data-n="${sessions.length}"><span>Feedback v${b.version} <i aria-hidden="true">⋯</i></span><small>${plural(sessions.length, 'session')}${branchTodo ? ` · ${branchTodo} à faire` : ''}</small></button>
       ${nodes.join('')}
       <button class="add" data-act="new-session" data-id="${b.id}">${ICON.plus} Nouvelle session</button>
     </div>`);
@@ -180,25 +184,86 @@ async function projectScreen(id) {
       <div class="node root" id="root"><span class="name">${esc(project.name)}</span><span class="sub">projet</span></div>
       <div class="branches">${cols.join('')}</div>
     </div></div></main>
+    <div class="zoom" role="group" aria-label="Zoom">
+      <button class="zoom-btn" data-act="zoom-out" aria-label="Dézoomer">−</button>
+      <button class="zoom-btn zoom-val" data-act="zoom-reset" aria-label="Taille normale">100 %</button>
+      <button class="zoom-btn" data-act="zoom-in" aria-label="Zoomer">+</button>
+    </div>
     <button class="fab" data-act="send-all">${ICON.send} Tout envoyer à Claude</button>`;
 
   app.classList.add('screen-canvas');
   const wrap = app.querySelector('.canvas-wrap');
+  const tree = app.querySelector('#tree');
+  const zoomVal = app.querySelector('.zoom-val');
+  const saved = canvasScroll.get(id);
+  let zoom = saved?.z || 1;
+  const remember = () => canvasScroll.set(id, { x: wrap.scrollLeft, y: wrap.scrollTop, z: zoom });
+  // Change le zoom en gardant le point (fx, fy) de l'écran au même endroit.
+  const setZoom = (z, fx = wrap.clientWidth / 2, fy = wrap.clientHeight / 2, from = null) => {
+    const s = from || { z: zoom, x: wrap.scrollLeft, y: wrap.scrollTop, fx, fy };
+    z = Math.min(2.5, Math.max(0.3, z));
+    const w = wrap.getBoundingClientRect(), t = tree.getBoundingClientRect();
+    const tx = t.left - w.left + wrap.scrollLeft, ty = t.top - w.top + wrap.scrollTop;
+    zoom = z;
+    tree.style.zoom = z;
+    const k = z / s.z;
+    wrap.scrollLeft = tx + (s.x + s.fx - tx) * k - fx;
+    wrap.scrollTop = ty + (s.y + s.fy - ty) * k - fy;
+    zoomVal.textContent = `${Math.round(z * 100)} %`;
+    remember();
+  };
+  tree.style.zoom = zoom;
+  zoomVal.textContent = `${Math.round(zoom * 100)} %`;
   requestAnimationFrame(() => {
     drawWires();
     // Revient où on était dans ce canvas, sinon centre le nom du projet en haut.
-    const saved = canvasScroll.get(id);
     if (saved) { wrap.scrollLeft = saved.x; wrap.scrollTop = saved.y; return; }
     const w = wrap.getBoundingClientRect(), r = document.getElementById('root').getBoundingClientRect();
     wrap.scrollLeft += r.left - w.left + r.width / 2 - w.width / 2;
     wrap.scrollTop += r.top - w.top - 24;
   });
-  wrap.addEventListener('scroll', () => canvasScroll.set(id, { x: wrap.scrollLeft, y: wrap.scrollTop }), { passive: true });
+  wrap.addEventListener('scroll', remember, { passive: true });
+  // Pincer avec deux doigts pour zoomer / dézoomer.
+  let pinch = null;
+  const mid = (a, b) => { const w = wrap.getBoundingClientRect(); return [(a.clientX + b.clientX) / 2 - w.left, (a.clientY + b.clientY) / 2 - w.top]; };
+  const dist = (a, b) => Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+  wrap.addEventListener('touchstart', (e) => {
+    if (e.touches.length !== 2) return;
+    const [a, b] = e.touches; const [fx, fy] = mid(a, b);
+    pinch = { d: dist(a, b), from: { z: zoom, x: wrap.scrollLeft, y: wrap.scrollTop, fx, fy } };
+  }, { passive: true });
+  wrap.addEventListener('touchmove', (e) => {
+    if (!pinch || e.touches.length !== 2) return;
+    e.preventDefault();
+    const [a, b] = e.touches; const [fx, fy] = mid(a, b);
+    setZoom(pinch.from.z * (dist(a, b) / pinch.d), fx, fy, pinch.from);
+  }, { passive: false });
+  wrap.addEventListener('touchend', (e) => { if (e.touches.length < 2) pinch = null; });
+  wrap.addEventListener('wheel', (e) => {
+    if (!e.ctrlKey) return;
+    e.preventDefault();
+    const w = wrap.getBoundingClientRect();
+    setZoom(zoom * (e.deltaY < 0 ? 1.1 : 0.9), e.clientX - w.left, e.clientY - w.top);
+  }, { passive: false });
   app.onclick = async (e) => {
     const t = e.target.closest('[data-act]');
     if (!t) return;
     const act = t.dataset.act;
-    if (act === 'new-session') {
+    if (act === 'zoom-in') setZoom(zoom * 1.25);
+    else if (act === 'zoom-out') setZoom(zoom / 1.25);
+    else if (act === 'zoom-reset') setZoom(1);
+    else if (act === 'branch-menu') {
+      const v = t.dataset.v, n = Number(t.dataset.n);
+      const c = await sheet({
+        title: `Feedback v${v}`,
+        actions: [{ label: 'Supprimer la branche', value: 'delete', kind: 'danger' }, { label: 'Fermer', value: null }],
+      });
+      if (c === 'delete' && await confirmDelete(`la branche v${v}${n ? ` et ses ${plural(n, 'session')}` : ''}`)) {
+        await db.deleteBranch(t.dataset.id);
+        toast(`Branche v${v} supprimée`);
+        route();
+      }
+    } else if (act === 'new-session') {
       const s = await db.createSession(t.dataset.id);
       location.hash = `#/s/${s.id}`;
     } else if (act === 'new-branch') {
@@ -232,8 +297,12 @@ function drawWires() {
   const tree = document.getElementById('tree');
   if (!tree) return;
   tree.querySelector('svg.wires')?.remove();
-  const r = tree.getBoundingClientRect();
-  const box = (el) => { const b = el.getBoundingClientRect(); return { cx: b.left - r.left + b.width / 2, l: b.left - r.left, t: b.top - r.top, b: b.bottom - r.top }; };
+  // Positions en unités de mise en page (le zoom du canvas s'applique ensuite à tout).
+  const box = (el) => {
+    let l = 0, t = 0;
+    for (let n = el; n && n !== tree; n = n.offsetParent) { l += n.offsetLeft; t += n.offsetTop; }
+    return { cx: l + el.offsetWidth / 2, l, t, b: t + el.offsetHeight };
+  };
   const root = box(document.getElementById('root'));
   let d = '';
   tree.querySelectorAll('[data-head]').forEach((h) => {
@@ -248,7 +317,7 @@ function drawWires() {
     d += `M${x} ${head.b}V${box(items[items.length - 1]).t + 18}`;
     items.forEach((it) => { const ib = box(it); d += `M${x} ${ib.t + 18}H${ib.l}`; });
   });
-  tree.insertAdjacentHTML('afterbegin', `<svg class="wires" aria-hidden="true" width="${tree.scrollWidth}" height="${tree.scrollHeight}"><path d="${d}"/></svg>`);
+  tree.insertAdjacentHTML('afterbegin', `<svg class="wires" aria-hidden="true" width="1" height="1"><path d="${d}"/></svg>`);
 }
 window.addEventListener('resize', () => requestAnimationFrame(drawWires));
 

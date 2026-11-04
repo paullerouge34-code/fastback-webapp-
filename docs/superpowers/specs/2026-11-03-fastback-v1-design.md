@@ -92,3 +92,11 @@ Style visuel (reprend la maquette), détails d'interaction, messages d'erreur.
 2. **Appui long sur une carte de feedback** (`js/reorder.js`) : la carte se soulève. On la glisse pour changer l'ordre (champ `order`, utilisé aussi pour départager les feedbacks de même priorité dans le message), ou on la lâche sur la zone rouge en bas pour la supprimer, avec un bouton « Annuler » pendant 5 secondes. Un appui long sans bouger ouvre un menu avec « Supprimer ».
 3. **Canvas** : grande surface qu'on fait glisser dans tous les sens (haut, bas, gauche, droite). À l'ouverture, le nom du projet est centré en haut ; en revenant d'une session, on retrouve la position où on était.
 
+## Retours du 2026-11-04 (3)
+
+1. **Zoom du canvas** : boutons − / 100 % / + en haut à droite, pincement à deux doigts (et Ctrl + molette sur ordinateur). De 30 % à 250 %, zoom et position retenus par projet. Les traits sont calculés en unités de mise en page pour rester alignés à tous les niveaux de zoom.
+2. **Supprimer une branche** : toucher l'en-tête « Feedback vN » ouvre un menu avec « Supprimer la branche » (avec confirmation, supprime aussi ses sessions).
+3. **Sélection par simple appui** dans l'annotation, quel que soit l'outil : un appui sans glisser sur une annotation la sélectionne et passe en mode Déplacer. Une annotation sélectionnée se déplace ou se redimensionne directement.
+4. **Rétablir** : flèche à côté d'Annuler pour refaire ce qui a été annulé.
+5. **Partage vers Claude** : avec des images, l'app Claude ignore le texte partagé. Le bouton « Partager » copie donc aussi le texte dans le presse-papier ; la feuille explique de le coller dans le message Claude (appui long → Coller).
+
