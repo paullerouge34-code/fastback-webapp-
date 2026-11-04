@@ -3,6 +3,7 @@ import { openAnnotator } from './annotate.js';
 import { buildMessage, send, sortByPriority } from './share.js';
 import { pushOverlay, dismissAll } from './overlay.js';
 import { enableReorder } from './reorder.js';
+import { APP_VERSION, APP_DATE } from './version.js';
 
 const app = document.getElementById('app');
 const PRIO = { high: 'Haute', mid: 'Moyenne', low: 'Basse' };
@@ -138,6 +139,7 @@ async function projectsScreen() {
         <p class="empty-title">Aucun projet pour l'instant</p>
         <p class="muted">Crée un projet par app que tu testes, par exemple DopaBreak.</p></div>`}
       <button class="btn primary wide" data-act="new-project">${ICON.plus} Nouveau projet</button>
+      <p class="version">Fastback version ${APP_VERSION} · ${APP_DATE}</p>
     </main>`;
   app.querySelector('[data-act="new-project"]').onclick = async () => {
     const name = await askName('Nouveau projet');
