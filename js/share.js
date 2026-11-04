@@ -41,7 +41,7 @@ export async function buildMessage({ project, scope, items, target = 'chat', kno
   const headerEnd = lines.length;
   for (const [i, { feedback: f, label }] of sorted.entries()) {
     const num = i + 1;
-    const tags = [TYPE_LABEL[f.type] || null, f.priority ? `priorité ${PRIO_LABEL[f.priority]}` : null, label ? `session ${label}` : null].filter(Boolean);
+    const tags = [f.screen ? `écran ${f.screen}` : null, TYPE_LABEL[f.type] || null, f.priority ? `priorité ${PRIO_LABEL[f.priority]}` : null, label ? `session ${label}` : null].filter(Boolean);
     const [first, ...rest] = (f.note || '').trim().split('\n');
     lines.push('');
     lines.push(`${num}. ${tags.length ? `[${tags.join(' · ')}] ` : ''}${first || '(pas de note, voir les captures)'}`);
