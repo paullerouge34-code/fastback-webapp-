@@ -2,6 +2,7 @@ import * as db from './db.js';
 import { openAnnotator } from './annotate.js';
 import { buildMessage, send, sortByPriority } from './share.js';
 import { pushOverlay, dismissAll } from './overlay.js';
+import { enableReorder } from './reorder.js';
 
 const app = document.getElementById('app');
 const PRIO = { high: 'Haute', mid: 'Moyenne', low: 'Basse' };
@@ -22,6 +23,7 @@ const ICON = {
   send: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12 20 4l-6 16-3-7-7-1z"/></svg>',
   plus: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>',
   x: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>',
+  check: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5 10 17 19 7"/></svg>',
   pen: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20l4-1 11-11-3-3L5 16z"/></svg>',
 };
 
@@ -33,15 +35,18 @@ function bar(title, { back, menu, sub } = {}) {
   </header>`;
 }
 
-export function toast(msg) {
+// action : { label, run } affiche un bouton dans le message (ex. Annuler).
+export function toast(msg, action) {
   document.querySelectorAll('.toast').forEach((t) => t.remove());
   const el = document.createElement('div');
   el.className = 'toast';
   el.setAttribute('role', 'status');
-  el.textContent = msg;
+  el.innerHTML = `<span>${esc(msg)}</span>${action ? `<button class="toast-btn">${esc(action.label)}</button>` : ''}`;
+  if (action) el.querySelector('button').onclick = () => { el.remove(); action.run(); };
   document.body.appendChild(el);
-  setTimeout(() => el.classList.add('out'), 2200);
-  setTimeout(() => el.remove(), 2600);
+  const life = action ? 5000 : 2200;
+  setTimeout(() => el.classList.add('out'), life);
+  setTimeout(() => el.remove(), life + 400);
 }
 
 // Feuille modale. actions : [{ label, value, kind: 'primary'|'danger'|'ghost', run }]
@@ -139,6 +144,8 @@ async function projectsScreen() {
 }
 
 // ---------- Écran : canvas du projet ----------
+const canvasScroll = new Map();
+
 async function projectScreen(id) {
   const project = await db.get('projects', id);
   if (!project) return notFound();
@@ -175,7 +182,18 @@ async function projectScreen(id) {
     </div></div></main>
     <button class="fab" data-act="send-all">${ICON.send} Tout envoyer à Claude</button>`;
 
-  requestAnimationFrame(drawWires);
+  app.classList.add('screen-canvas');
+  const wrap = app.querySelector('.canvas-wrap');
+  requestAnimationFrame(() => {
+    drawWires();
+    // Revient où on était dans ce canvas, sinon centre le nom du projet en haut.
+    const saved = canvasScroll.get(id);
+    if (saved) { wrap.scrollLeft = saved.x; wrap.scrollTop = saved.y; return; }
+    const w = wrap.getBoundingClientRect(), r = document.getElementById('root').getBoundingClientRect();
+    wrap.scrollLeft += r.left - w.left + r.width / 2 - w.width / 2;
+    wrap.scrollTop += r.top - w.top - 24;
+  });
+  wrap.addEventListener('scroll', () => canvasScroll.set(id, { x: wrap.scrollLeft, y: wrap.scrollTop }), { passive: true });
   app.onclick = async (e) => {
     const t = e.target.closest('[data-act]');
     if (!t) return;
@@ -243,19 +261,45 @@ async function sessionScreen(id) {
   const cards = await Promise.all(fbs.map(async (f) => {
     const img = f.imageIds[0] ? await db.get('images', f.imageIds[0]) : null;
     const thumb = img ? `<img src="${blobUrl(img.rendered || img.original)}" alt="">` : '<span>Texte</span>';
-    return `<a class="fb-card ${f.status === 'done' ? 'done' : ''}" href="#/f/${f.id}">
+    return `<a class="fb-card ${f.status === 'done' ? 'done' : ''}" href="#/f/${f.id}" data-id="${f.id}">
       <span class="thumb">${thumb}${f.imageIds.length > 1 ? `<b>${f.imageIds.length}</b>` : ''}</span>
       <span class="fb-c"><span class="fb-t">${esc(firstLine(f.note)) || '<i class="muted">Sans note</i>'}</span>
       <span class="row">${f.priority ? `<span class="chip ${f.priority}">${PRIO[f.priority]}</span>` : ''}<span class="chip status">${f.status === 'done' ? 'Corrigé' : 'À faire'}</span></span></span>
     </a>`;
   }));
   const todo = fbs.filter((f) => f.status === 'todo');
+  const removeWithUndo = async (fbId) => {
+    const saved = await db.get('feedbacks', fbId);
+    const imgs = (await Promise.all(saved.imageIds.map((i) => db.get('images', i)))).filter(Boolean);
+    await db.deleteFeedback(fbId);
+    route();
+    toast('Feedback supprimé', {
+      label: 'Annuler',
+      run: async () => { for (const im of imgs) await db.put('images', im); await db.put('feedbacks', saved); route(); },
+    });
+  };
   app.innerHTML = `${bar(`${label} · ${fmtDate(session.createdAt)}`, { back: `#/p/${project.id}`, menu: true, sub: `${project.name} › Feedback v${branch.version}` })}
     <main class="page">
-      ${cards.length ? `<div class="stack">${cards.join('')}</div>` : `<div class="empty"><p class="empty-title">Session vide</p><p class="muted">Ajoute un feedback pour chaque problème ou idée trouvé pendant ton test.</p></div>`}
+      ${cards.length ? `<div class="stack" id="fb-list">${cards.join('')}</div>${cards.length > 1 ? '<p class="hint">Maintiens une carte pour changer son ordre ou la supprimer.</p>' : ''}` : `<div class="empty"><p class="empty-title">Session vide</p><p class="muted">Ajoute un feedback pour chaque problème ou idée trouvé pendant ton test.</p></div>`}
       <button class="btn primary wide" data-act="new-fb">${ICON.plus} Nouveau feedback</button>
       ${fbs.length ? `<button class="btn ghost wide" data-act="send">${ICON.send} Envoyer cette session à Claude${todo.length ? ` (${todo.length})` : ''}</button>` : ''}
     </main>`;
+  const fbList = app.querySelector('#fb-list');
+  if (fbList) {
+    enableReorder(fbList, {
+      onReorder: async (ids) => { await db.reorderFeedbacks(ids); route(); },
+      onDelete: removeWithUndo,
+      onHold: async (fbId) => {
+        const f = fbs.find((x) => x.id === fbId);
+        const c = await sheet({
+          title: firstLine(f.note) || 'Feedback',
+          body: '<p class="muted">Pour changer l\'ordre, maintiens la carte puis glisse-la.</p>',
+          actions: [{ label: 'Supprimer ce feedback', value: 'delete', kind: 'danger' }, { label: 'Fermer', value: null }],
+        });
+        if (c === 'delete') removeWithUndo(fbId);
+      },
+    });
+  }
   app.onclick = async (e) => {
     const t = e.target.closest('[data-act]');
     if (!t) return;
@@ -315,7 +359,10 @@ async function feedbackScreen(id, isNew) {
           <button class="seg-btn ok" data-act="status" data-s="done" aria-pressed="${f.status === 'done'}">Corrigé</button>
         </div>
       </section>
-      <button class="btn primary wide" data-act="send">${ICON.send} Envoyer à Claude</button>
+      <div class="actions-row">
+        <button class="btn primary" data-act="save">${ICON.check} Enregistrer</button>
+        <button class="btn ghost" data-act="send">${ICON.send} Envoyer à Claude</button>
+      </div>
     </main>`;
 
   const save = async (patch) => { f = { ...f, ...patch }; await db.put('feedbacks', f); };
@@ -405,6 +452,10 @@ async function feedbackScreen(id, isNew) {
       await db.del('images', t.dataset.id);
       await save({ note: note.value, imageIds: f.imageIds.filter((i) => i !== t.dataset.id) });
       route();
+    } else if (act === 'save') {
+      await saveNote();
+      if (f.note.trim() || f.imageIds.length) toast('Feedback enregistré');
+      location.hash = `#/s/${session.id}`;
     } else if (act === 'send') {
       await save({ note: note.value });
       if (!f.note.trim() && !f.imageIds.length) return toast('Ajoute une note ou une capture avant d\'envoyer');
@@ -442,6 +493,7 @@ async function route() {
   dismissAll();
   releaseUrls();
   app.onclick = null;
+  app.className = '';
   window.scrollTo(0, 0);
   try {
     if (kind === 'p') await projectScreen(id);

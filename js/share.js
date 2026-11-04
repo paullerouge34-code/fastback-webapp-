@@ -6,7 +6,7 @@ const PRIO_LABEL = { high: 'haute', mid: 'moyenne', low: 'basse' };
 const PRIO_ORDER = { high: 0, mid: 1, low: 2 };
 
 export const sortByPriority = (list) =>
-  list.slice().sort((a, b) => (PRIO_ORDER[a.priority] ?? 3) - (PRIO_ORDER[b.priority] ?? 3) || a.createdAt - b.createdAt);
+  list.slice().sort((a, b) => (PRIO_ORDER[a.priority] ?? 3) - (PRIO_ORDER[b.priority] ?? 3) || db.feedbackOrder(a) - db.feedbackOrder(b));
 
 // items : [{ feedback, label }] (label = "v1.02" ou null)
 export async function buildMessage({ project, scope, items }) {

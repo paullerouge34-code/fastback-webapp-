@@ -66,8 +66,6 @@ export async function by(store, index, value) {
   return wrap((await tx(store)).index(index).getAll(value));
 }
 
-const byDate = (a, b) => a.createdAt - b.createdAt;
-
 // --- Requêtes métier ---
 
 export async function listProjects() {
@@ -100,13 +98,23 @@ export async function createSession(branchId) {
   return put('sessions', { id: uid(), branchId, number, createdAt: Date.now() });
 }
 
+// Ordre choisi par l'utilisateur (appui long + glisser), sinon ordre de création.
+export const feedbackOrder = (f) => f.order ?? f.createdAt;
+
 export async function listFeedbacks(sessionId) {
-  return (await by('feedbacks', 'sessionId', sessionId)).sort(byDate);
+  return (await by('feedbacks', 'sessionId', sessionId)).sort((a, b) => feedbackOrder(a) - feedbackOrder(b));
+}
+
+export async function reorderFeedbacks(ids) {
+  for (const [i, id] of ids.entries()) {
+    const f = await get('feedbacks', id);
+    if (f) await put('feedbacks', { ...f, order: i });
+  }
 }
 
 export async function createFeedback(sessionId) {
   return put('feedbacks', {
-    id: uid(), sessionId, note: '', priority: null, status: 'todo', imageIds: [], createdAt: Date.now(),
+    id: uid(), sessionId, note: '', priority: null, status: 'todo', imageIds: [], createdAt: Date.now(), order: Date.now(),
   });
 }
 
