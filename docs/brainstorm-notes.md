@@ -30,11 +30,13 @@ Une web app qui m'aide à noter vite des feedbacks (bugs, idées, détails desig
    - Maquette : https://claude.ai/artifact/1tMTTTyBtJ9ft6JPX6CmM8 (source dans le scratchpad de la session, non versionnée)
    - Propositions de Claude (à confirmer) : numéro de session automatique (v1.01, v1.02…) + date comme titre ; branche v2 créée à la main ; envoi possible pour une session entière.
 
-## État (2026-11-03)
+## État (2026-11-04)
 
-- Paul a validé toutes les propositions et demandé de lancer le dev.
-- v1 codée : HTML + JS natif sans build, IndexedDB, annotation sur canvas, envoi via le menu de partage Android (texte + images) ou copie du texte.
-- Reste à faire par Paul : fusionner dans `main` et activer GitHub Pages (voir README), puis tester sur le téléphone.
+- En ligne sur GitHub Pages (`main`), installée sur le téléphone de Paul. Version 1.7.
+- Détail de chaque version (1.1 à 1.7) : `docs/superpowers/specs/2026-11-03-fastback-v1-design.md`.
+- Méthode de travail : voir `CLAUDE.md` (numéro de version, test Pixel 7, PR vers `main` fusionnée sans redemander).
+- Si une publication GitHub Pages reste bloquée « In progress » sans étape, une nouvelle fusion dans `main` relance une publication neuve.
+- Idées proposées mais pas encore faites : partage direct d'une capture vers Fastback, badge « Envoyé à Claude », « Tout marquer corrigé » après un envoi.
 
 ## Hors périmètre v1
 
