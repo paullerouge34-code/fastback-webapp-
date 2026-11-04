@@ -100,3 +100,12 @@ Style visuel (reprend la maquette), détails d'interaction, messages d'erreur.
 4. **Rétablir** : flèche à côté d'Annuler pour refaire ce qui a été annulé.
 5. **Partage vers Claude** : avec des images, l'app Claude ignore le texte partagé. Le bouton « Partager » copie donc aussi le texte dans le presse-papier ; la feuille explique de le coller dans le message Claude (appui long → Coller).
 
+## Version 1.5 (2026-11-04)
+
+1. **Sauvegarde** (`js/backup.js`) : sur l'accueil, « Exporter » crée un fichier JSON avec toutes les données, captures comprises en base64. On peut le télécharger ou le partager vers Drive. « Importer » ajoute ou remplace sans rien supprimer. La date de la dernière sauvegarde est affichée.
+2. **Filtre et tri** dans une session : Tous / À faire / Corrigés, et « Tri : mon ordre » ou « Tri : priorité ». Le choix est gardé sur le téléphone. Le glisser-déposer garde la place des cartes cachées par le filtre et est désactivé en tri par priorité.
+3. **Recadrer** : outil dans l'annotation. Le cadre est gardé avec l'image (`crop`), les annotations restent modifiables, l'image envoyée est recadrée. La corbeille enlève le recadrage, et Annuler / Rétablir le prennent en compte.
+4. **Déplacer un feedback** vers une autre session du projet, depuis le menu ⋯ du feedback ou l'appui long sur sa carte.
+5. **Type** de feedback (Bug / Idée / Design), en option. Il apparaît en étiquette sur la carte et dans le message pour Claude.
+6. **Vert quand c'est fini** : une session, ou une version (« Feedback vN »), dont tous les feedbacks sont corrigés devient verte et un peu transparente dans le canvas.
+
