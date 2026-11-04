@@ -118,8 +118,14 @@ const confirmDelete = (what) => sheet({
   actions: [{ label: 'Annuler', value: false }, { label: 'Supprimer', kind: 'danger', value: true }],
 });
 
+const TARGET_KEY = 'fastback-send-target';
+const TARGETS = { chat: 'Claude (discussion)', code: 'Claude Code' };
+
 async function sendSheet(payload) {
-  const msg = await buildMessage(payload);
+  const msgs = { chat: await buildMessage({ ...payload, target: 'chat' }), code: await buildMessage({ ...payload, target: 'code' }) };
+  let target = 'chat';
+  try { if (localStorage.getItem(TARGET_KEY) === 'code') target = 'code'; } catch { /* sans importance */ }
+  let msg = msgs[target];
   const n = msg.files.length;
   const copy = () => navigator.clipboard.writeText(msg.text)
     .then(() => toast('Texte copié'), () => toast('Copie impossible sur cet appareil'));
@@ -128,12 +134,30 @@ async function sendSheet(payload) {
     else if (r === 'copied') toast('Partage indisponible : texte copié à la place');
     else if (r === 'failed') toast('Partage impossible sur cet appareil');
   });
+  const where = (t) => (t === 'code' ? 'ta session Claude Code' : 'une nouvelle discussion Claude');
   await sheet({
     title: 'Envoyer à Claude',
-    body: n
-      ? `<ol class="steps"><li>Appuie sur <b>Partager</b> et choisis l'app Claude : ${plural(n, 'image')} y ${n > 1 ? 'sont ajoutées' : 'est ajoutée'}.</li>
-         <li>Le texte est copié en même temps. Dans Claude, fais un <b>appui long dans la zone de message</b>, puis <b>Coller</b>.</li></ol><pre class="preview">${esc(msg.text)}</pre>`
-      : `<p class="muted">Choisis l'app Claude dans le menu de partage.</p><pre class="preview">${esc(msg.text)}</pre>`,
+    body: `<div class="seg target" role="group" aria-label="Destination">
+        ${Object.entries(TARGETS).map(([k, l]) => `<button type="button" class="seg-btn" data-target="${k}" aria-pressed="${k === target}">${l}</button>`).join('')}
+      </div>
+      ${n
+        ? `<ol class="steps"><li>Appuie sur <b>Partager</b> et choisis l'app Claude, dans <span data-where>${where(target)}</span> : ${plural(n, 'image')} y ${n > 1 ? 'sont ajoutées' : 'est ajoutée'}.</li>
+         <li>Le texte est copié en même temps. Dans Claude, fais un <b>appui long dans la zone de message</b>, puis <b>Coller</b>.</li></ol>`
+        : `<p class="muted">Partage le texte dans <span data-where>${where(target)}</span>, ou copie-le.</p>`}
+      ${!payload.project.repo ? `<p class="muted small" data-repo-hint${target === 'code' ? '' : ' hidden'}>Astuce : indique le dépôt GitHub du projet (menu ⋯ du projet) pour qu'il soit écrit dans le texte.</p>` : ''}
+      <pre class="preview">${esc(msg.text)}</pre>`,
+    onOpen: (form) => {
+      form.querySelectorAll('[data-target]').forEach((btn) => btn.addEventListener('click', () => {
+        target = btn.dataset.target;
+        msg = msgs[target];
+        try { localStorage.setItem(TARGET_KEY, target); } catch { /* sans importance */ }
+        form.querySelectorAll('[data-target]').forEach((b) => b.setAttribute('aria-pressed', b === btn));
+        form.querySelector('.preview').textContent = msg.text;
+        form.querySelectorAll('[data-where]').forEach((el) => { el.textContent = where(target); });
+        const hint = form.querySelector('[data-repo-hint]');
+        if (hint) hint.hidden = target !== 'code';
+      }));
+    },
     actions: [
       { label: 'Copier le texte seulement', value: null, run: copy },
       { label: n ? `Partager les ${plural(n, 'image')} + copier le texte` : 'Partager', kind: 'primary', value: null, run: share },
@@ -350,9 +374,18 @@ async function projectScreen(id) {
     } else if (act === 'menu') {
       const choice = await sheet({
         title: project.name,
-        actions: [{ label: 'Renommer', value: 'rename' }, { label: 'Supprimer le projet', value: 'delete', kind: 'danger' }, { label: 'Fermer', value: null }],
+        body: project.repo ? `<p class="muted">Dépôt GitHub : ${esc(project.repo)}</p>` : '',
+        actions: [{ label: 'Renommer', value: 'rename' }, { label: project.repo ? 'Changer le dépôt GitHub' : 'Indiquer le dépôt GitHub (pour Claude Code)', value: 'repo' }, { label: 'Supprimer le projet', value: 'delete', kind: 'danger' }, { label: 'Fermer', value: null }],
       });
-      if (choice === 'rename') {
+      if (choice === 'repo') {
+        const repo = await sheet({
+          title: 'Dépôt GitHub du projet',
+          body: `<p class="muted">Il est écrit dans le texte envoyé à Claude Code. Laisse vide pour l'enlever.</p>
+            <input class="input" name="repo" maxlength="120" placeholder="ex. paullerouge34-code/dopabreak" value="${esc(project.repo || '')}" autocomplete="off" autocapitalize="off" spellcheck="false">`,
+          actions: [{ label: 'Annuler', value: null }, { label: 'Enregistrer', kind: 'primary', value: (f) => f.repo.value.trim().replace(/^https?:\/\/github\.com\//, '').replace(/\/$/, '') }],
+        });
+        if (repo !== null) { await db.put('projects', { ...project, repo: repo || null }); toast(repo ? 'Dépôt enregistré' : 'Dépôt enlevé'); route(); }
+      } else if (choice === 'rename') {
         const name = await askName('Renommer le projet', project.name);
         if (name) { await db.put('projects', { ...project, name }); route(); }
       } else if (choice === 'delete' && await confirmDelete(`le projet « ${project.name} » et tous ses feedbacks`)) {

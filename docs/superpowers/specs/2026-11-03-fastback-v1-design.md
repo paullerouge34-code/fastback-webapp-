@@ -109,3 +109,8 @@ Style visuel (reprend la maquette), détails d'interaction, messages d'erreur.
 5. **Type** de feedback (Bug / Idée / Design), en option. Il apparaît en étiquette sur la carte et dans le message pour Claude.
 6. **Vert quand c'est fini** : une session, ou une version (« Feedback vN »), dont tous les feedbacks sont corrigés devient verte et un peu transparente dans le canvas.
 
+## Version 1.6 (2026-11-04)
+
+- **Deux destinations** dans la fenêtre d'envoi : « Claude (discussion) » pour une nouvelle discussion, avec un texte qui donne le contexte et demande la cause probable et la correction, et « Claude Code », avec un texte de travail dans le code : corriger dans l'ordre des priorités, vérifier le reste, demander si un point n'est pas clair, un commit par feedback, puis la liste des numéros corrigés. Le dernier choix est retenu.
+- **Dépôt GitHub du projet** (optionnel, menu ⋯ du projet), écrit dans le texte pour Claude Code. Une adresse github.com collée est réduite à `propriétaire/dépôt`.
+

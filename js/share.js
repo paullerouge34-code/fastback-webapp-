@@ -10,19 +10,31 @@ export const sortByPriority = (list) =>
   list.slice().sort((a, b) => (PRIO_ORDER[a.priority] ?? 3) - (PRIO_ORDER[b.priority] ?? 3) || db.feedbackOrder(a) - db.feedbackOrder(b));
 
 // items : [{ feedback, label }] (label = "v1.02" ou null)
-export async function buildMessage({ project, scope, items }) {
+// target : 'chat' (nouvelle discussion Claude) ou 'code' (session Claude Code sur le dépôt de l'app)
+export async function buildMessage({ project, scope, items, target = 'chat' }) {
   const sorted = sortByPriority(items.map((i) => i.feedback)).map((f) => items.find((i) => i.feedback === f));
   const files = [];
   let colorCode = false;
-  const lines = [`Projet : ${project.name}${scope ? ` (${scope})` : ''}`];
-  if (sorted.length > 1) {
-    const hasPrio = sorted.some((i) => i.feedback.priority);
-    lines.push(`Corrige ces ${sorted.length} feedbacks.${hasPrio ? ' Traite-les dans l\'ordre des priorités : haute, puis moyenne, puis basse.' : ''}`);
+  const n = sorted.length;
+  const hasPrio = sorted.some((i) => i.feedback.priority);
+  const order = hasPrio && n > 1 ? ', dans l\'ordre des priorités : haute, puis moyenne, puis basse' : '';
+  const what = n > 1 ? `ces ${n} feedbacks` : 'ce feedback';
+  const lines = [];
+  if (target === 'code') {
+    lines.push(`Projet : ${project.name}${scope ? ` (${scope})` : ''}`);
+    if (project.repo) lines.push(`Dépôt GitHub : ${project.repo}`);
+    lines.push(`Tu travailles dans le code de cette app. Corrige ${what}${order}.`);
+    lines.push('Pour chaque feedback :');
+    lines.push('- trouve le code concerné et corrige-le ;');
+    lines.push('- vérifie que le reste de l\'app marche toujours ;');
+    lines.push('- si le point n\'est pas clair, pose-moi la question avant de modifier.');
   } else {
-    lines.push('Corrige ce feedback.');
+    lines.push(`Je teste mon app « ${project.name} »${scope ? ` (${scope})` : ''} et j'ai noté ${n > 1 ? `${n} retours` : 'un retour'}.`);
+    lines.push(`Aide-moi à corriger ${what}${order}. Pour chacun, explique la cause probable et la correction à faire.`);
   }
-  for (const [n, { feedback: f, label }] of sorted.entries()) {
-    const num = n + 1;
+  const headerEnd = lines.length;
+  for (const [i, { feedback: f, label }] of sorted.entries()) {
+    const num = i + 1;
     const tags = [TYPE_LABEL[f.type] || null, f.priority ? `priorité ${PRIO_LABEL[f.priority]}` : null, label ? `session ${label}` : null].filter(Boolean);
     const [first, ...rest] = (f.note || '').trim().split('\n');
     lines.push('');
@@ -39,8 +51,13 @@ export async function buildMessage({ project, scope, items }) {
     }
     if (names.length) lines.push(`   Captures : ${names.join(', ')}`);
   }
-  if (colorCode) {
-    lines.splice(2, 0, 'Sur les captures, la couleur des annotations indique l\'importance : rouge = haute, orange = moyenne, vert = basse.');
+  const extra = [];
+  if (files.length) extra.push('Les captures sont jointes, nommées dans l\'ordre des numéros (fb1-img1.jpg…).');
+  if (colorCode) extra.push('Sur les captures, la couleur des annotations indique l\'importance : rouge = haute, orange = moyenne, vert = basse.');
+  lines.splice(headerEnd, 0, ...extra);
+  if (target === 'code') {
+    lines.push('');
+    lines.push('À la fin : fais un commit par feedback (avec son numéro dans le message), puis donne-moi la liste des numéros corrigés pour que je les passe en « Corrigé » dans Fastback.');
   }
   return { text: lines.join('\n'), files };
 }
