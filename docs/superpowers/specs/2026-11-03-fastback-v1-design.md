@@ -131,3 +131,11 @@ Style visuel (reprend la maquette), détails d'interaction, messages d'erreur.
 - **Bouton ✓ sur chaque carte** de feedback : il passe le feedback en Corrigé ou le remet à faire sans l'ouvrir. La coche se dessine et le titre est barré.
 - Barre de navigation Android : elle prend la couleur du manifeste au moment de l'installation. Pour qu'elle change tout de suite, il faut réinstaller l'app (après une sauvegarde).
 
+## Version 2.0 (2026-11-04)
+
+- **Écran concerné** : chaque projet a sa liste d'écrans (`project.screens`), par exemple Accueil, Minuteur ou Réglages.
+  - Dans un feedback, on choisit un écran ou on en ajoute un avec « + Écran ». Un nom déjà connu, même écrit avec d'autres majuscules, est réutilisé.
+  - L'écran apparaît en étiquette sur la carte et dans le message pour Claude (`[écran Minuteur · bug · priorité haute]`).
+  - Dans une session, « Tri » propose maintenant trois modes : mon ordre → priorité → écran. Le tri par écran regroupe les cartes sous un titre par écran (puis par priorité), avec « Sans écran » à la fin.
+  - Menu ⋯ du projet → « Gérer les écrans » pour en supprimer un. Les feedbacks qui l'utilisaient le perdent.
+

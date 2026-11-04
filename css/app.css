@@ -273,3 +273,14 @@ body:has(.sheet) .toast { top: calc(env(safe-area-inset-top, 0px) + 12px); botto
 @keyframes n-toast { from { opacity: 0; transform: translate(-50%, 18px) scale(.9); } }
 @keyframes n-annot { from { opacity: 0; transform: scale(.97); } }
 @keyframes n-done { 40% { transform: scale(1.03); } }
+
+/* Écran concerné */
+.screens { display: flex; gap: 6px; flex-wrap: wrap; }
+.screen-chip { border: 1px solid var(--line); background: var(--surface); color: var(--muted); border-radius: 999px; padding: 8px 14px; font-weight: 700; font-size: 14px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; transition: transform .18s var(--ease-out), background-color .25s, border-color .25s, color .25s; }
+.screen-chip:active { transform: scale(.94); }
+.screen-chip[aria-pressed="true"] { background: var(--ink-soft); color: var(--ink); border-color: var(--ink); }
+.screen-chip.add-screen { border-style: dashed; }
+.screen-chip svg { width: 16px; height: 16px; }
+.chip.screen { background: transparent; color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink-soft); }
+.group-h { margin: 8px 2px -2px; font-family: var(--f-display); font-size: 13px; font-weight: 700; letter-spacing: .02em; color: var(--muted); display: flex; align-items: center; gap: 8px; }
+.group-h b { font-family: var(--f-body); font-size: 12px; background: var(--surface-2); color: var(--muted); border-radius: 999px; padding: 1px 8px; }

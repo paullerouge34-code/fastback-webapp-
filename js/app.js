@@ -401,9 +401,23 @@ async function projectScreen(id) {
       const choice = await sheet({
         title: project.name,
         body: project.repo ? `<p class="muted">Dépôt GitHub : ${esc(project.repo)}</p>` : '',
-        actions: [{ label: 'Renommer', value: 'rename' }, { label: project.repo ? 'Changer le dépôt GitHub' : 'Indiquer le dépôt GitHub (pour Claude Code)', value: 'repo' }, { label: 'Supprimer le projet', value: 'delete', kind: 'danger' }, { label: 'Fermer', value: null }],
+        actions: [{ label: 'Renommer', value: 'rename' }, ...((project.screens || []).length ? [{ label: 'Gérer les écrans', value: 'screens' }] : []), { label: project.repo ? 'Changer le dépôt GitHub' : 'Indiquer le dépôt GitHub (pour Claude Code)', value: 'repo' }, { label: 'Supprimer le projet', value: 'delete', kind: 'danger' }, { label: 'Fermer', value: null }],
       });
-      if (choice === 'repo') {
+      if (choice === 'screens') {
+        const name = await sheet({
+          title: 'Écrans de l\'app',
+          body: '<p class="muted">Touche un écran pour le supprimer de la liste. Les feedbacks qui l\'utilisaient le perdent.</p>',
+          actions: [{ label: 'Fermer', value: null }, ...[...project.screens].reverse().map((s) => ({ label: s, value: s }))],
+        });
+        if (name && await confirmDelete(`l'écran « ${name} »`)) {
+          await db.put('projects', { ...project, screens: project.screens.filter((s) => s !== name) });
+          for (const b of await db.listBranches(id)) for (const s of await db.listSessions(b.id)) {
+            for (const fb of await db.listFeedbacks(s.id)) if (fb.screen === name) await db.put('feedbacks', { ...fb, screen: null });
+          }
+          toast(`Écran « ${name} » supprimé`);
+          route();
+        }
+      } else if (choice === 'repo') {
         const repo = await sheet({
           title: 'Dépôt GitHub du projet',
           body: `<p class="muted">Il est écrit dans le texte envoyé à Claude Code. Laisse vide pour l'enlever.</p>
@@ -459,15 +473,24 @@ async function sessionScreen(id) {
   const view = getView();
   const counts = { all: fbs.length, todo: fbs.filter((f) => f.status === 'todo').length, done: fbs.filter((f) => f.status === 'done').length };
   let shown = view.filter === 'all' ? fbs : fbs.filter((f) => f.status === view.filter);
+  const screens = project.screens || [];
   if (view.sort === 'prio') shown = sortByPriority(shown);
-  const cards = await Promise.all(shown.map(async (f) => {
+  if (view.sort === 'screen') {
+    // Regroupe par écran, dans l'ordre des écrans du projet ; « Sans écran » à la fin.
+    const rank = (f) => (f.screen && screens.includes(f.screen) ? screens.indexOf(f.screen) : f.screen ? screens.length : screens.length + 1);
+    shown = sortByPriority(shown).sort((a, b) => rank(a) - rank(b));
+  }
+  const cards = await Promise.all(shown.map(async (f, i) => {
+    const prev = shown[i - 1];
+    const heading = view.sort === 'screen' && (!prev || (prev.screen || '') !== (f.screen || ''))
+      ? `<h3 class="group-h">${esc(f.screen || 'Sans écran')} <b>${shown.filter((x) => (x.screen || '') === (f.screen || '')).length}</b></h3>` : '';
     const img = f.imageIds[0] ? await db.get('images', f.imageIds[0]) : null;
     const thumb = img ? `<img src="${blobUrl(img.rendered || img.original)}" alt="">` : '<span>Texte</span>';
-    return `<a class="fb-card ${f.status === 'done' ? 'done' : ''}" href="#/f/${f.id}" data-id="${f.id}"${f.priority ? ` data-p="${f.priority}"` : ''}>
+    return `${heading}<a class="fb-card ${f.status === 'done' ? 'done' : ''}" href="#/f/${f.id}" data-id="${f.id}"${f.priority ? ` data-p="${f.priority}"` : ''}>
       ${f.priority ? '<span class="fb-stripe" aria-hidden="true"></span>' : ''}
       <span class="thumb">${thumb}${f.imageIds.length > 1 ? `<b>${f.imageIds.length}</b>` : ''}</span>
       <span class="fb-c"><span class="fb-t">${esc(firstLine(f.note)) || '<i class="muted">Sans note</i>'}</span>
-      <span class="row">${f.type ? `<span class="chip type">${TYPES[f.type]}</span>` : ''}${f.priority ? `<span class="chip ${f.priority}">${PRIO[f.priority]}</span>` : ''}<span class="chip status">${f.status === 'done' ? 'Corrigé' : 'À faire'}</span></span></span>
+      <span class="row">${f.screen && view.sort !== 'screen' ? `<span class="chip screen">${esc(f.screen)}</span>` : ''}${f.type ? `<span class="chip type">${TYPES[f.type]}</span>` : ''}${f.priority ? `<span class="chip ${f.priority}">${PRIO[f.priority]}</span>` : ''}<span class="chip status">${f.status === 'done' ? 'Corrigé' : 'À faire'}</span></span></span>
       <button class="fb-check" data-act="toggle-done" data-id="${f.id}" aria-label="${f.status === 'done' ? 'Remettre à faire' : 'Marquer corrigé'}" aria-pressed="${f.status === 'done'}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5 10 17 19 7"/></svg></button>
     </a>`;
   }));
@@ -488,9 +511,9 @@ async function sessionScreen(id) {
         <div class="filters" role="group" aria-label="Filtre">
           ${[['all', 'Tous'], ['todo', 'À faire'], ['done', 'Corrigés']].map(([k, l]) => `<button class="filter" data-act="filter" data-f="${k}" aria-pressed="${view.filter === k}">${l} <b>${counts[k]}</b></button>`).join('')}
         </div>
-        <button class="sort" data-act="sort">${view.sort === 'prio' ? 'Tri : priorité' : 'Tri : mon ordre'}</button>
+        <button class="sort" data-act="sort">${{ prio: 'Tri : priorité', screen: 'Tri : écran' }[view.sort] || 'Tri : mon ordre'}</button>
       </div>` : ''}
-      ${cards.length ? `<div class="stack" id="fb-list">${cards.join('')}</div>${cards.length > 1 ? `<p class="hint">${view.sort === 'prio' ? 'Trié par priorité. Passe en « mon ordre » pour déplacer les cartes.' : 'Maintiens une carte pour changer son ordre, la déplacer ou la supprimer.'}</p>` : ''}`
+      ${cards.length ? `<div class="stack" id="fb-list">${cards.join('')}</div>${cards.length > 1 ? `<p class="hint">${view.sort === 'prio' ? 'Trié par priorité. Passe en « mon ordre » pour déplacer les cartes.' : view.sort === 'screen' ? 'Regroupé par écran, puis par priorité. Passe en « mon ordre » pour déplacer les cartes.' : 'Maintiens une carte pour changer son ordre, la déplacer ou la supprimer.'}</p>` : ''}`
         : fbs.length ? `<div class="empty"><p class="empty-title">${view.filter === 'todo' ? 'Rien à faire ici' : 'Aucun feedback corrigé'}</p><p class="muted">Change de filtre pour voir les autres feedbacks.</p></div>`
         : `<div class="empty"><p class="empty-title">Session vide</p><p class="muted">Ajoute un feedback pour chaque problème ou idée trouvé pendant ton test.</p></div>`}
       <button class="btn primary wide" data-act="new-fb">${ICON.plus} Nouveau feedback</button>
@@ -500,7 +523,7 @@ async function sessionScreen(id) {
   if (fbList) {
     enableReorder(fbList, {
       onReorder: async (ids) => {
-        if (view.sort === 'prio') { toast('Passe en « Tri : mon ordre » pour déplacer les cartes'); return route(); }
+        if (view.sort !== 'manual') { toast('Passe en « Tri : mon ordre » pour déplacer les cartes'); return route(); }
         // Les cartes cachées par le filtre gardent leur place.
         const queue = [...ids];
         const visible = new Set(ids);
@@ -534,7 +557,7 @@ async function sessionScreen(id) {
       toast(done ? 'Feedback corrigé ✓' : 'Remis à faire');
       setTimeout(route, 650);
     } else if (t.dataset.act === 'filter') { setView({ ...view, filter: t.dataset.f }); route(); }
-    else if (t.dataset.act === 'sort') { setView({ ...view, sort: view.sort === 'prio' ? 'manual' : 'prio' }); route(); }
+    else if (t.dataset.act === 'sort') { setView({ ...view, sort: { manual: 'prio', prio: 'screen' }[view.sort] || 'manual' }); route(); }
     else if (t.dataset.act === 'new-fb') {
       const f = await db.createFeedback(id);
       location.hash = `#/f/${f.id}?new`;
@@ -577,6 +600,13 @@ async function feedbackScreen(id, isNew) {
         <span class="label" id="points-label">Notes</span>
         <ul class="points" id="points" aria-labelledby="points-label"></ul>
         <button class="add-point" data-act="add-point">${ICON.plus} Ajouter un point</button>
+      </section>
+      <section class="field">
+        <span class="label">Écran concerné</span>
+        <div class="screens" role="group" aria-label="Écran concerné">
+          ${(project.screens || []).map((s) => `<button class="screen-chip" data-act="screen" data-s="${esc(s)}" aria-pressed="${f.screen === s}">${esc(s)}</button>`).join('')}
+          <button class="screen-chip add-screen" data-act="add-screen">${ICON.plus} Écran</button>
+        </div>
       </section>
       <section class="field">
         <span class="label">Type</span>
@@ -676,6 +706,24 @@ async function feedbackScreen(id, isNew) {
       const li = t.closest('li');
       if (list.children.length > 1) li.remove(); else li.querySelector('input').value = '';
       placeholders(); saveNote();
+    } else if (act === 'screen') {
+      await save({ screen: f.screen === t.dataset.s ? null : t.dataset.s });
+      app.querySelectorAll('[data-act="screen"]').forEach((b) => b.setAttribute('aria-pressed', b.dataset.s === f.screen));
+    } else if (act === 'add-screen') {
+      await saveNote();
+      const name = await sheet({
+        title: 'Nouvel écran',
+        body: `<p class="muted">Un écran de ${esc(project.name)}, par exemple Accueil, Minuteur ou Réglages. Il sera proposé pour tous les feedbacks du projet.</p>
+          <input class="input" name="name" maxlength="40" placeholder="ex. Minuteur" autocomplete="off">`,
+        actions: [{ label: 'Annuler', value: null }, { label: 'Ajouter', kind: 'primary', value: (fm) => fm.name.value.trim() || null }],
+      });
+      if (!name) return;
+      const fresh = await db.get('projects', project.id);
+      const list2 = fresh.screens || [];
+      const existing = list2.find((x) => x.toLowerCase() === name.toLowerCase());
+      if (!existing) await db.put('projects', { ...fresh, screens: [...list2, name] });
+      await save({ screen: existing || name });
+      route();
     } else if (act === 'type') {
       await save({ type: f.type === t.dataset.t ? null : t.dataset.t });
       app.querySelectorAll('[data-act="type"]').forEach((b) => b.setAttribute('aria-pressed', b.dataset.t === f.type));
