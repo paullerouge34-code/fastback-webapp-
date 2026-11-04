@@ -121,11 +121,23 @@ const confirmDelete = (what) => sheet({
 const TARGET_KEY = 'fastback-send-target';
 const TARGETS = { chat: 'Claude (discussion)', code: 'Claude Code' };
 
+// « Claude connaît déjà mon projet », retenu par projet et par destination.
+const KNOWN_KEY = 'fastback-known';
+const getKnown = () => { try { return JSON.parse(localStorage.getItem(KNOWN_KEY) || '{}'); } catch { return {}; } };
+const setKnown = (k) => { try { localStorage.setItem(KNOWN_KEY, JSON.stringify(k)); } catch { /* sans importance */ } };
+
 async function sendSheet(payload) {
-  const msgs = { chat: await buildMessage({ ...payload, target: 'chat' }), code: await buildMessage({ ...payload, target: 'code' }) };
+  const msgs = {};
+  for (const t of ['chat', 'code']) {
+    msgs[t] = {};
+    for (const k of [false, true]) msgs[t][k] = await buildMessage({ ...payload, target: t, known: k });
+  }
   let target = 'chat';
   try { if (localStorage.getItem(TARGET_KEY) === 'code') target = 'code'; } catch { /* sans importance */ }
-  let msg = msgs[target];
+  const knownAll = getKnown();
+  const kKey = (t) => `${payload.project.id}:${t}`;
+  let known = !!knownAll[kKey(target)];
+  let msg = msgs[target][known];
   const n = msg.files.length;
   const copy = () => navigator.clipboard.writeText(msg.text)
     .then(() => toast('Texte copié'), () => toast('Copie impossible sur cet appareil'));
@@ -134,33 +146,47 @@ async function sendSheet(payload) {
     else if (r === 'copied') toast('Partage indisponible : texte copié à la place');
     else if (r === 'failed') toast('Partage impossible sur cet appareil');
   });
-  const where = (t) => (t === 'code' ? 'ta session Claude Code' : 'une nouvelle discussion Claude');
+  const where = (t, k) => (t === 'code' ? 'ta session Claude Code' : k ? 'ta discussion Claude' : 'une nouvelle discussion Claude');
   await sheet({
     title: 'Envoyer à Claude',
     body: `<div class="seg target" role="group" aria-label="Destination">
         ${Object.entries(TARGETS).map(([k, l]) => `<button type="button" class="seg-btn" data-target="${k}" aria-pressed="${k === target}">${l}</button>`).join('')}
       </div>
+      <label class="check"><input type="checkbox" id="known"${known ? ' checked' : ''}>
+        <span><b>Claude connaît déjà mon projet</b><br><small>Texte court, sans la présentation : pour une discussion ou une session déjà commencée.</small></span></label>
       ${n
-        ? `<ol class="steps"><li>Appuie sur <b>Partager</b> et choisis l'app Claude, dans <span data-where>${where(target)}</span> : ${plural(n, 'image')} y ${n > 1 ? 'sont ajoutées' : 'est ajoutée'}.</li>
+        ? `<ol class="steps"><li>Appuie sur <b>Partager</b> et choisis l'app Claude, dans <span data-where>${where(target, known)}</span> : ${plural(n, 'image')} y ${n > 1 ? 'sont ajoutées' : 'est ajoutée'}.</li>
          <li>Le texte est copié en même temps. Dans Claude, fais un <b>appui long dans la zone de message</b>, puis <b>Coller</b>.</li></ol>`
-        : `<p class="muted">Partage le texte dans <span data-where>${where(target)}</span>, ou copie-le.</p>`}
+        : `<p class="muted">Partage le texte dans <span data-where>${where(target, known)}</span>, ou copie-le.</p>`}
       ${!payload.project.repo ? `<p class="muted small" data-repo-hint${target === 'code' ? '' : ' hidden'}>Astuce : indique le dépôt GitHub du projet (menu ⋯ du projet) pour qu'il soit écrit dans le texte.</p>` : ''}
       <pre class="preview">${esc(msg.text)}</pre>`,
     onOpen: (form) => {
+      const knownBox = form.querySelector('#known');
+      const refresh = () => {
+        msg = msgs[target][known];
+        form.querySelector('.preview').textContent = msg.text;
+        form.querySelectorAll('[data-where]').forEach((el) => { el.textContent = where(target, known); });
+      };
+      knownBox.addEventListener('change', () => {
+        known = knownBox.checked;
+        setKnown({ ...getKnown(), [kKey(target)]: known });
+        refresh();
+      });
       form.querySelectorAll('[data-target]').forEach((btn) => btn.addEventListener('click', () => {
         target = btn.dataset.target;
-        msg = msgs[target];
+        known = !!getKnown()[kKey(target)];
+        knownBox.checked = known;
+        msg = msgs[target][known];
         try { localStorage.setItem(TARGET_KEY, target); } catch { /* sans importance */ }
         form.querySelectorAll('[data-target]').forEach((b) => b.setAttribute('aria-pressed', b === btn));
-        form.querySelector('.preview').textContent = msg.text;
-        form.querySelectorAll('[data-where]').forEach((el) => { el.textContent = where(target); });
+        refresh();
         const hint = form.querySelector('[data-repo-hint]');
         if (hint) hint.hidden = target !== 'code';
       }));
     },
     actions: [
       { label: 'Copier le texte seulement', value: null, run: copy },
-      { label: n ? `Partager les ${plural(n, 'image')} + copier le texte` : 'Partager', kind: 'primary', value: null, run: share },
+      { label: n ? `Partager ${n > 1 ? `les ${n} images` : 'l\'image'} + copier le texte` : 'Partager', kind: 'primary', value: null, run: share },
     ],
   });
 }

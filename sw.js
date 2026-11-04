@@ -1,5 +1,5 @@
 // Service worker : réseau d'abord (les mises à jour arrivent tout de suite), cache en secours hors ligne.
-const CACHE = 'fastback-v7'; // suit APP_VERSION 1.6 (js/version.js)
+const CACHE = 'fastback-v8'; // suit APP_VERSION 1.7 (js/version.js)
 const SHELL = [
   './', './index.html', './css/app.css', './js/app.js', './js/db.js', './js/annotate.js', './js/share.js', './js/overlay.js', './js/reorder.js', './js/version.js', './js/backup.js',
   './manifest.webmanifest', './icons/icon.svg', './icons/icon-192.png', './icons/icon-512.png',

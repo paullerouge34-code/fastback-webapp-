@@ -114,3 +114,7 @@ Style visuel (reprend la maquette), détails d'interaction, messages d'erreur.
 - **Deux destinations** dans la fenêtre d'envoi : « Claude (discussion) » pour une nouvelle discussion, avec un texte qui donne le contexte et demande la cause probable et la correction, et « Claude Code », avec un texte de travail dans le code : corriger dans l'ordre des priorités, vérifier le reste, demander si un point n'est pas clair, un commit par feedback, puis la liste des numéros corrigés. Le dernier choix est retenu.
 - **Dépôt GitHub du projet** (optionnel, menu ⋯ du projet), écrit dans le texte pour Claude Code. Une adresse github.com collée est réduite à `propriétaire/dépôt`.
 
+## Version 1.7 (2026-11-04)
+
+- Case **« Claude connaît déjà mon projet »** dans la fenêtre d'envoi. Cochée, elle donne un texte court sans présentation ni consignes : « Autres retours sur… » pour une discussion, « Nouveaux feedbacks à corriger… Même méthode que d'habitude » pour Claude Code, suivi seulement de la liste. Elle est retenue par projet et par destination.
+
