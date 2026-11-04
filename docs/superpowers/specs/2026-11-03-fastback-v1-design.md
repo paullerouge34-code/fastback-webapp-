@@ -118,3 +118,16 @@ Style visuel (reprend la maquette), détails d'interaction, messages d'erreur.
 
 - Case **« Claude connaît déjà mon projet »** dans la fenêtre d'envoi. Cochée, elle donne un texte court sans présentation ni consignes : « Autres retours sur… » pour une discussion, « Nouveaux feedbacks à corriger… Même méthode que d'habitude » pour Claude Code, suivi seulement de la liste. Elle est retenue par projet et par destination.
 
+## Version 1.8 et 1.9 (2026-11-04)
+
+- **1.8** : la couleur `theme-color` des barres du téléphone n'est plus bleue.
+- **1.9 : style « Nuit »** (style B choisi par Paul sur la page de comparaison des 3 styles). Un seul thème, sombre : bleu nuit #121733, cartes #1b2247, accent ambre #ffb547, priorités lumineuses (rouge #ff6b7a, ambre, vert menthe #4fd08a). Titres en Unbounded, texte en Manrope. Icône de l'app aux mêmes couleurs.
+- **Animations du style Nuit** (désactivées si le téléphone demande moins d'animations) :
+  - à chaque changement d'écran, la barre descend et les éléments glissent depuis la droite en sortant d'un flou, l'un après l'autre ;
+  - la bande rouge des priorités hautes s'illumine deux fois ;
+  - le bouton « Tout envoyer » arrive d'en bas en se redressant ;
+  - les fenêtres et les messages arrivent avec un ressort ;
+  - tout ce qui se touche s'enfonce un peu sous le doigt.
+- **Bouton ✓ sur chaque carte** de feedback : il passe le feedback en Corrigé ou le remet à faire sans l'ouvrir. La coche se dessine et le titre est barré.
+- Barre de navigation Android : elle prend la couleur du manifeste au moment de l'installation. Pour qu'elle change tout de suite, il faut réinstaller l'app (après une sauvegarde).
+

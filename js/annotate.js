@@ -299,7 +299,7 @@ export async function openAnnotator(original, initialShapes = [], initialCrop = 
       ctx.setLineDash([6 / k, 5 / k]);
       ctx.strokeStyle = '#ffffff';
       ctx.strokeRect(b.x - pad, b.y - pad, b.w + pad * 2, b.h + pad * 2);
-      ctx.strokeStyle = '#2f6bff';
+      ctx.strokeStyle = '#ffb547';
       ctx.lineDashOffset = 5 / k;
       ctx.strokeRect(b.x - pad, b.y - pad, b.w + pad * 2, b.h + pad * 2);
       ctx.setLineDash([]);
@@ -308,7 +308,7 @@ export async function openAnnotator(original, initialShapes = [], initialCrop = 
       ctx.beginPath();
       ctx.arc(hd.x, hd.y, 9 / k, 0, Math.PI * 2);
       ctx.fillStyle = '#ffffff'; ctx.fill();
-      ctx.strokeStyle = '#2f6bff'; ctx.lineWidth = 3 / k; ctx.stroke();
+      ctx.strokeStyle = '#ffb547'; ctx.lineWidth = 3 / k; ctx.stroke();
     }
     ctx.restore();
   };
