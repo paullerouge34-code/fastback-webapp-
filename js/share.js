@@ -11,7 +11,8 @@ export const sortByPriority = (list) =>
 
 // items : [{ feedback, label }] (label = "v1.02" ou null)
 // target : 'chat' (nouvelle discussion Claude) ou 'code' (session Claude Code sur le dépôt de l'app)
-export async function buildMessage({ project, scope, items, target = 'chat' }) {
+// known : Claude connaît déjà le projet et la méthode → texte court, sans la présentation.
+export async function buildMessage({ project, scope, items, target = 'chat', known = false }) {
   const sorted = sortByPriority(items.map((i) => i.feedback)).map((f) => items.find((i) => i.feedback === f));
   const files = [];
   let colorCode = false;
@@ -20,7 +21,12 @@ export async function buildMessage({ project, scope, items, target = 'chat' }) {
   const order = hasPrio && n > 1 ? ', dans l\'ordre des priorités : haute, puis moyenne, puis basse' : '';
   const what = n > 1 ? `ces ${n} feedbacks` : 'ce feedback';
   const lines = [];
-  if (target === 'code') {
+  const where = `${project.name}${scope ? `, ${scope}` : ''}`;
+  if (known) {
+    lines.push(target === 'code'
+      ? `Nouveaux feedbacks à corriger (${where}). Même méthode que d'habitude${order}.`
+      : `Autres retours sur ${project.name}${scope ? ` (${scope})` : ''}${order ? '. Traite-les dans l\'ordre des priorités : haute, puis moyenne, puis basse.' : ' :'}`);
+  } else if (target === 'code') {
     lines.push(`Projet : ${project.name}${scope ? ` (${scope})` : ''}`);
     if (project.repo) lines.push(`Dépôt GitHub : ${project.repo}`);
     lines.push(`Tu travailles dans le code de cette app. Corrige ${what}${order}.`);
@@ -52,10 +58,13 @@ export async function buildMessage({ project, scope, items, target = 'chat' }) {
     if (names.length) lines.push(`   Captures : ${names.join(', ')}`);
   }
   const extra = [];
-  if (files.length) extra.push('Les captures sont jointes, nommées dans l\'ordre des numéros (fb1-img1.jpg…).');
+  if (files.length && !known) extra.push('Les captures sont jointes, nommées dans l\'ordre des numéros (fb1-img1.jpg…).');
   if (colorCode) extra.push('Sur les captures, la couleur des annotations indique l\'importance : rouge = haute, orange = moyenne, vert = basse.');
   lines.splice(headerEnd, 0, ...extra);
-  if (target === 'code') {
+  if (target === 'code' && known) {
+    lines.push('');
+    lines.push('À la fin, donne-moi les numéros corrigés.');
+  } else if (target === 'code') {
     lines.push('');
     lines.push('À la fin : fais un commit par feedback (avec son numéro dans le message), puis donne-moi la liste des numéros corrigés pour que je les passe en « Corrigé » dans Fastback.');
   }
