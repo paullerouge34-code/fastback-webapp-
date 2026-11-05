@@ -148,6 +148,20 @@ export async function context({ feedbackId, sessionId, branchId, projectId }) {
   return ctx;
 }
 
-export function sessionLabel(branch, session) {
+// Nom affiché : le nom choisi par Paul, sinon le numéro automatique.
+export function sessionNumber(branch, session) {
   return `v${branch.version}.${String(session.number).padStart(2, '0')}`;
+}
+
+export function branchLabel(branch) {
+  return (branch.name || '').trim() || `Feedback v${branch.version}`;
+}
+
+// Titre d'un feedback : son nom s'il en a un, sinon le premier point de la note.
+export function feedbackTitle(f) {
+  return (f.title || '').trim() || (f.note || '').trim().split('\n')[0];
+}
+
+export function sessionLabel(branch, session) {
+  return (session.name || '').trim() || sessionNumber(branch, session);
 }

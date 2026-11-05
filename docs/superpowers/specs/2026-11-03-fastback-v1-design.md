@@ -139,3 +139,9 @@ Style visuel (reprend la maquette), détails d'interaction, messages d'erreur.
   - Dans une session, « Tri » propose maintenant trois modes : mon ordre → priorité → écran. Le tri par écran regroupe les cartes sous un titre par écran (puis par priorité), avec « Sans écran » à la fin.
   - Menu ⋯ du projet → « Gérer les écrans » pour en supprimer un. Les feedbacks qui l'utilisaient le perdent.
 
+## Version 2.1 (2026-11-05)
+
+- **Note sous chaque capture** (`image.caption`) : un champ sous chaque image du feedback. Dans le message pour Claude, chaque capture est listée avec sa note (`- fb1-img1.jpg : Avant : le bouton est visible`).
+- **Nom du feedback** (`feedback.title`, facultatif) : un champ en haut du feedback, ou « Renommer » par appui long sur la carte. Avec un nom, il sert de titre et tous les points de la note deviennent des tirets dans le message. Sans nom, c'est le premier point qui sert de titre, comme avant. Un feedback qui n'a qu'un nom est gardé.
+- **Renommer une branche** (`branch.name`) depuis son menu dans le canvas, et **une session** (`session.name`) depuis le menu ⋯ de la session. Un champ vide remet le nom automatique (« Feedback v1 », « v1.01 »). Dans le canvas, une session renommée affiche son nom sur deux lignes, avec le numéro en petit. Les noms sont repris dans le message pour Claude.
+
