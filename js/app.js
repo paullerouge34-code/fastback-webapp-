@@ -15,6 +15,9 @@ const VIEW_KEY = 'fastback-session-view';
 const getView = () => { try { return { filter: 'all', sort: 'manual', ...JSON.parse(localStorage.getItem(VIEW_KEY) || '{}') }; } catch { return { filter: 'all', sort: 'manual' }; } };
 const setView = (v) => { try { localStorage.setItem(VIEW_KEY, JSON.stringify(v)); } catch { /* sans importance */ } };
 
+// « v1, session v1.02 », ou le nom donné à la branche.
+const scopeOf = (branch, label) => `${(branch.name || '').trim() || `v${branch.version}`}, session ${label}`;
+
 // Propose les autres sessions du projet et y déplace le feedback.
 async function moveFeedback(fbId, projectId, currentSessionId) {
   const targets = [];
@@ -110,6 +113,14 @@ const askName = (title, value = '') => sheet({
   title,
   body: `<input class="input" name="name" maxlength="60" placeholder="Ex. DopaBreak" value="${esc(value)}" autocomplete="off">`,
   actions: [{ label: 'Annuler', value: null }, { label: 'Valider', kind: 'primary', value: (f) => f.name.value.trim() || null }],
+});
+
+// Renommer : vide = revenir au nom automatique.
+const askRename = (title, value, auto) => sheet({
+  title,
+  body: `<input class="input" name="name" maxlength="60" placeholder="${esc(auto)}" value="${esc(value || '')}" autocomplete="off">
+    <p class="muted small">Laisse vide pour revenir à « ${esc(auto)} ».</p>`,
+  actions: [{ label: 'Annuler', value: null }, { label: 'Enregistrer', kind: 'primary', value: (f) => f.name.value.trim() }],
 });
 
 const confirmDelete = (what) => sheet({
@@ -286,12 +297,12 @@ async function projectScreen(id) {
       const allDone = fbs.length && !todo.length;
       nodes.push(`<a class="node leaf${allDone ? ' all-done' : ''}" href="#/s/${s.id}">
         <span class="dot ${top?.priority || (todo.length ? 'none' : 'ok')}"></span>
-        <span class="v">${db.sessionLabel(b, s)}</span>
-        <span class="t">${fmtDate(s.createdAt)} · ${fbs.length ? (todo.length ? `${todo.length} à faire` : 'tout corrigé') : 'vide'}</span>
+        ${(s.name || '').trim() ? `<span class="leaf-txt"><span class="v named">${esc(s.name.trim())}</span><span class="t">${db.sessionNumber(b, s)} · ${fmtDate(s.createdAt)} · ` : `<span class="v">${db.sessionNumber(b, s)}</span>
+        <span class="t">${fmtDate(s.createdAt)} · `}${fbs.length ? (todo.length ? `${todo.length} à faire` : 'tout corrigé') : 'vide'}</span>${(s.name || '').trim() ? '</span>' : ''}
       </a>`);
     }
     cols.push(`<div class="branch" data-branch>
-      <button class="node branch-head${branchTotal && !branchTodo ? ' all-done' : ''}" data-head data-act="branch-menu" data-id="${b.id}" data-v="${b.version}" data-n="${sessions.length}"><span>Feedback v${b.version} <i aria-hidden="true">⋯</i></span><small>${plural(sessions.length, 'session')}${branchTodo ? ` · ${branchTodo} à faire` : branchTotal ? ' · tout corrigé ✓' : ''}</small></button>
+      <button class="node branch-head${branchTotal && !branchTodo ? ' all-done' : ''}" data-head data-act="branch-menu" data-id="${b.id}" data-v="${b.version}" data-n="${sessions.length}"><span>${esc(db.branchLabel(b))} <i aria-hidden="true">⋯</i></span><small>${plural(sessions.length, 'session')}${branchTodo ? ` · ${branchTodo} à faire` : branchTotal ? ' · tout corrigé ✓' : ''}</small></button>
       ${nodes.join('')}
       <button class="add" data-act="new-session" data-id="${b.id}">${ICON.plus} Nouvelle session</button>
     </div>`);
@@ -374,11 +385,15 @@ async function projectScreen(id) {
     else if (act === 'zoom-reset') setZoom(1);
     else if (act === 'branch-menu') {
       const v = t.dataset.v, n = Number(t.dataset.n);
+      const br = await db.get('branches', t.dataset.id);
       const c = await sheet({
-        title: `Feedback v${v}`,
-        actions: [{ label: 'Supprimer la branche', value: 'delete', kind: 'danger' }, { label: 'Fermer', value: null }],
+        title: db.branchLabel(br),
+        actions: [{ label: 'Renommer la branche', value: 'rename' }, { label: 'Supprimer la branche', value: 'delete', kind: 'danger' }, { label: 'Fermer', value: null }],
       });
-      if (c === 'delete' && await confirmDelete(`la branche v${v}${n ? ` et ses ${plural(n, 'session')}` : ''}`)) {
+      if (c === 'rename') {
+        const name = await askRename('Renommer la branche', br.name, `Feedback v${v}`);
+        if (name !== null) { await db.put('branches', { ...br, name: name || null }); toast('Branche renommée'); route(); }
+      } else if (c === 'delete' && await confirmDelete(`la branche v${v}${n ? ` et ses ${plural(n, 'session')}` : ''}`)) {
         await db.deleteBranch(t.dataset.id);
         toast(`Branche v${v} supprimée`);
         route();
@@ -489,7 +504,7 @@ async function sessionScreen(id) {
     return `${heading}<a class="fb-card ${f.status === 'done' ? 'done' : ''}" href="#/f/${f.id}" data-id="${f.id}"${f.priority ? ` data-p="${f.priority}"` : ''}>
       ${f.priority ? '<span class="fb-stripe" aria-hidden="true"></span>' : ''}
       <span class="thumb">${thumb}${f.imageIds.length > 1 ? `<b>${f.imageIds.length}</b>` : ''}</span>
-      <span class="fb-c"><span class="fb-t">${esc(firstLine(f.note)) || '<i class="muted">Sans note</i>'}</span>
+      <span class="fb-c"><span class="fb-t">${esc(db.feedbackTitle(f)) || '<i class="muted">Sans note</i>'}</span>
       <span class="row">${f.screen && view.sort !== 'screen' ? `<span class="chip screen">${esc(f.screen)}</span>` : ''}${f.type ? `<span class="chip type">${TYPES[f.type]}</span>` : ''}${f.priority ? `<span class="chip ${f.priority}">${PRIO[f.priority]}</span>` : ''}<span class="chip status">${f.status === 'done' ? 'Corrigé' : 'À faire'}</span></span></span>
       <button class="fb-check" data-act="toggle-done" data-id="${f.id}" aria-label="${f.status === 'done' ? 'Remettre à faire' : 'Marquer corrigé'}" aria-pressed="${f.status === 'done'}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5 10 17 19 7"/></svg></button>
     </a>`;
@@ -505,7 +520,7 @@ async function sessionScreen(id) {
       run: async () => { for (const im of imgs) await db.put('images', im); await db.put('feedbacks', saved); route(); },
     });
   };
-  app.innerHTML = `${bar(`${label} · ${fmtDate(session.createdAt)}`, { back: `#/p/${project.id}`, menu: true, sub: `${project.name} › Feedback v${branch.version}` })}
+  app.innerHTML = `${bar(`${label} · ${fmtDate(session.createdAt)}`, { back: `#/p/${project.id}`, menu: true, sub: `${project.name} › ${db.branchLabel(branch)}` })}
     <main class="page">
       ${fbs.length ? `<div class="toolbar">
         <div class="filters" role="group" aria-label="Filtre">
@@ -534,11 +549,15 @@ async function sessionScreen(id) {
       onHold: async (fbId) => {
         const f = fbs.find((x) => x.id === fbId);
         const c = await sheet({
-          title: firstLine(f.note) || 'Feedback',
+          title: db.feedbackTitle(f) || 'Feedback',
           body: '<p class="muted">Pour changer l\'ordre, maintiens la carte puis glisse-la.</p>',
-          actions: [{ label: 'Supprimer ce feedback', value: 'delete', kind: 'danger' }, { label: 'Déplacer vers une autre session', value: 'move' }, { label: 'Fermer', value: null }],
+          actions: [{ label: 'Supprimer ce feedback', value: 'delete', kind: 'danger' }, { label: 'Déplacer vers une autre session', value: 'move' }, { label: 'Renommer', value: 'rename' }, { label: 'Fermer', value: null }],
         });
         if (c === 'delete') removeWithUndo(fbId);
+        else if (c === 'rename') {
+          const name = await askRename('Renommer le feedback', f.title, firstLine(f.note) || 'Premier point de la note');
+          if (name !== null) { await db.put('feedbacks', { ...(await db.get('feedbacks', fbId)), title: name || null }); route(); }
+        }
         else if (c === 'move' && await moveFeedback(fbId, project.id, id)) route();
       },
     });
@@ -563,10 +582,13 @@ async function sessionScreen(id) {
       location.hash = `#/f/${f.id}?new`;
     } else if (t.dataset.act === 'send') {
       if (!todo.length) return toast('Tous les feedbacks de cette session sont corrigés');
-      sendSheet({ project, scope: `v${branch.version}, session ${label}`, items: todo.map((f) => ({ feedback: f, label: null })) });
+      sendSheet({ project, scope: scopeOf(branch, label), items: todo.map((f) => ({ feedback: f, label: null })) });
     } else if (t.dataset.act === 'menu') {
-      const c = await sheet({ title: `Session ${label}`, actions: [{ label: 'Supprimer la session', value: 'delete', kind: 'danger' }, { label: 'Fermer', value: null }] });
-      if (c === 'delete' && await confirmDelete(`la session ${label} et ses feedbacks`)) {
+      const c = await sheet({ title: `Session ${label}`, actions: [{ label: 'Renommer la session', value: 'rename' }, { label: 'Supprimer la session', value: 'delete', kind: 'danger' }, { label: 'Fermer', value: null }] });
+      if (c === 'rename') {
+        const name = await askRename('Renommer la session', session.name, db.sessionNumber(branch, session));
+        if (name !== null) { await db.put('sessions', { ...session, name: name || null }); toast('Session renommée'); route(); }
+      } else if (c === 'delete' && await confirmDelete(`la session ${label} et ses feedbacks`)) {
         await db.deleteSession(id);
         location.hash = `#/p/${project.id}`;
       }
@@ -585,14 +607,19 @@ async function feedbackScreen(id, isNew) {
   app.innerHTML = `${bar('Feedback', { back: `#/s/${session.id}`, menu: true, sub: `${project.name} › ${label}` })}
     <main class="page detail">
       <section class="field">
+        <label class="label" for="fb-title">Nom du feedback</label>
+        <input class="input title-input" id="fb-title" maxlength="80" value="${esc(f.title || '')}" placeholder="${esc(firstLine(f.note) || 'Ex. Bouton caché sur le minuteur')}" autocomplete="off">
+      </section>
+      <section class="field">
         <span class="label">Captures</span>
         <div class="shots">
-          ${images.map((img, k) => `<div class="shot">
+          ${images.map((img, k) => `<div class="shot-wrap"><div class="shot">
             <button class="shot-img" data-act="annotate" data-id="${img.id}" aria-label="Annoter la capture ${k + 1}"><img src="${blobUrl(img.rendered || img.original)}" alt=""></button>
             <span class="shot-n">${k + 1}/${images.length}</span>
             <button class="shot-edit" data-act="annotate" data-id="${img.id}" aria-label="Annoter">${ICON.pen}</button>
             <button class="shot-del" data-act="del-img" data-id="${img.id}" aria-label="Supprimer la capture">${ICON.x}</button>
-          </div>`).join('')}
+          </div>
+          <textarea class="shot-cap" data-img="${img.id}" rows="3" maxlength="300" placeholder="Note sur cette capture" aria-label="Note sur la capture ${k + 1}">${esc(img.caption || '')}</textarea></div>`).join('')}
           <label class="shot add-shot">${ICON.plus}<span>Ajouter des captures</span><input type="file" id="pick" accept="image/*" multiple hidden></label>
         </div>
       </section>
@@ -634,6 +661,23 @@ async function feedbackScreen(id, isNew) {
     </main>`;
 
   const save = async (patch) => { f = { ...f, ...patch }; await db.put('feedbacks', f); };
+  // Nom du feedback
+  const titleInput = app.querySelector('#fb-title');
+  let titleTimer;
+  const saveTitle = () => { clearTimeout(titleTimer); return save({ title: titleInput.value.trim() || null }); };
+  titleInput.addEventListener('input', () => { clearTimeout(titleTimer); titleTimer = setTimeout(saveTitle, 300); });
+  titleInput.addEventListener('blur', saveTitle);
+  // Note sous chaque capture
+  const capTimers = {};
+  const saveCap = async (ta) => {
+    clearTimeout(capTimers[ta.dataset.img]);
+    const img = await db.get('images', ta.dataset.img);
+    if (img && (img.caption || '') !== ta.value.trim()) await db.put('images', { ...img, caption: ta.value.trim() });
+  };
+  app.querySelectorAll('.shot-cap').forEach((ta) => {
+    ta.addEventListener('input', () => { clearTimeout(capTimers[ta.dataset.img]); capTimers[ta.dataset.img] = setTimeout(() => saveCap(ta), 300); });
+    ta.addEventListener('blur', () => saveCap(ta));
+  });
   // Notes en liste : un point par ligne, le premier sert de titre.
   const list = app.querySelector('#points');
   const note = { get value() { return [...list.querySelectorAll('input')].map((i) => i.value.trim()).filter(Boolean).join('\n'); } };
@@ -743,14 +787,18 @@ async function feedbackScreen(id, isNew) {
       route();
     } else if (act === 'save') {
       await saveNote();
-      if (f.note.trim() || f.imageIds.length) toast('Feedback enregistré');
+      await saveTitle();
+      await Promise.all([...app.querySelectorAll('.shot-cap')].map(saveCap));
+      if (f.note.trim() || f.imageIds.length || (f.title || '').trim()) toast('Feedback enregistré');
       location.hash = `#/s/${session.id}`;
     } else if (act === 'send') {
       await save({ note: note.value });
-      if (!f.note.trim() && !f.imageIds.length) return toast('Ajoute une note ou une capture avant d\'envoyer');
-      sendSheet({ project, scope: `v${branch.version}, session ${label}`, items: [{ feedback: f, label: null }] });
+      if (!f.note.trim() && !f.imageIds.length && !(f.title || '').trim()) return toast('Ajoute une note ou une capture avant d\'envoyer');
+      await saveTitle();
+      await Promise.all([...app.querySelectorAll('.shot-cap')].map(saveCap));
+      sendSheet({ project, scope: scopeOf(branch, label), items: [{ feedback: f, label: null }] });
     } else if (act === 'menu') {
-      const c = await sheet({ title: 'Feedback', actions: [{ label: 'Supprimer le feedback', value: 'delete', kind: 'danger' }, { label: 'Déplacer vers une autre session', value: 'move' }, { label: 'Fermer', value: null }] });
+      const c = await sheet({ title: db.feedbackTitle(f) || 'Feedback', actions: [{ label: 'Supprimer le feedback', value: 'delete', kind: 'danger' }, { label: 'Déplacer vers une autre session', value: 'move' }, { label: 'Fermer', value: null }] });
       if (c === 'move') {
         await saveNote();
         if (await moveFeedback(id, project.id, session.id)) route();
@@ -787,7 +835,7 @@ function animateScreen(path) {
 async function cleanupEmpty(nextFeedback) {
   if (!currentFeedback || currentFeedback === nextFeedback) return;
   const f = await db.get('feedbacks', currentFeedback);
-  if (f && !f.note.trim() && !f.imageIds.length) await db.deleteFeedback(f.id);
+  if (f && !f.note.trim() && !f.imageIds.length && !(f.title || '').trim()) await db.deleteFeedback(f.id);
 }
 
 async function route() {

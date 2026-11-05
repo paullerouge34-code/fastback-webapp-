@@ -42,20 +42,29 @@ export async function buildMessage({ project, scope, items, target = 'chat', kno
   for (const [i, { feedback: f, label }] of sorted.entries()) {
     const num = i + 1;
     const tags = [f.screen ? `écran ${f.screen}` : null, TYPE_LABEL[f.type] || null, f.priority ? `priorité ${PRIO_LABEL[f.priority]}` : null, label ? `session ${label}` : null].filter(Boolean);
-    const [first, ...rest] = (f.note || '').trim().split('\n');
+    // Avec un nom, toute la note devient des points ; sinon le premier point sert de titre.
+    const noteLines = (f.note || '').trim().split('\n').filter((l) => l.trim());
+    const title = (f.title || '').trim();
+    const head = title || noteLines[0];
+    const rest = title ? noteLines : noteLines.slice(1);
     lines.push('');
-    lines.push(`${num}. ${tags.length ? `[${tags.join(' · ')}] ` : ''}${first || '(pas de note, voir les captures)'}`);
-    for (const r of rest) if (r.trim()) lines.push(`   - ${r.trim()}`);
+    lines.push(`${num}. ${tags.length ? `[${tags.join(' · ')}] ` : ''}${head || '(pas de note, voir les captures)'}`);
+    for (const r of rest) lines.push(`   - ${r.trim()}`);
     const names = [];
+    const caps = [];
     for (const [k, imgId] of f.imageIds.entries()) {
       const img = await db.get('images', imgId);
       if (!img) continue;
       if ((img.shapes || []).some((s) => COLOR_PRIO[s.color])) colorCode = true;
       const name = `fb${num}-img${k + 1}.jpg`;
       names.push(name);
+      caps.push((img.caption || '').trim());
       files.push(new File([img.rendered || img.original], name, { type: 'image/jpeg' }));
     }
-    if (names.length) lines.push(`   Captures : ${names.join(', ')}`);
+    if (names.length && caps.some(Boolean)) {
+      lines.push('   Captures :');
+      names.forEach((nm, k) => lines.push(`   - ${nm}${caps[k] ? ` : ${caps[k]}` : ''}`));
+    } else if (names.length) lines.push(`   Captures : ${names.join(', ')}`);
   }
   const extra = [];
   if (files.length && !known) extra.push('Les captures sont jointes, nommées dans l\'ordre des numéros (fb1-img1.jpg…).');
